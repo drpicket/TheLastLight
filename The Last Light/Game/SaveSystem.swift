@@ -1,7 +1,7 @@
 import Foundation
 
 struct SaveSystem {
-    private static let saveKey = "StarfallSaveData"
+    private static let saveKey = "StarfallEnhancedSave_v2"
     
     struct SaveData: Codable {
         var starEnergy: Int
