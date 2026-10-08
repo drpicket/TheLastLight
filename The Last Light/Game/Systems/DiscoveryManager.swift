@@ -17,11 +17,17 @@ class DiscoveryManager {
     
     /// Create a discovery for a POI
     func createDiscovery(for poi: POI) -> Discovery {
+        if let existing = discoveries.first(where: { $0.poiId == poi.id }) {
+            return existing
+        }
+        let moment = poi.loreEntryId.flatMap { StoryMoment.byLoreID[$0] }
         let discovery = Discovery(
-            id: UUID().uuidString,
+            id: poi.id,
             poiId: poi.id,
-            title: poi.displayName,
+            title: LoreSystem.entry(withId: poi.loreEntryId ?? "")?.title ?? poi.displayName,
             type: poi.type,
+            lines: moment?.lines ?? ["\(poi.displayName) located. Instruments record an unfamiliar signature."],
+            question: moment?.question,
             isCompleted: false
         )
         discoveries.append(discovery)
@@ -30,30 +36,24 @@ class DiscoveryManager {
     
     /// Start a discovery event
     func startDiscovery(_ discovery: Discovery) {
+        guard activeDiscovery == nil, !discovery.isCompleted else { return }
         activeDiscovery = discovery
+        gameState.activeDiscovery = discovery
         onDiscoveryStarted?(discovery)
     }
-    
-    /// Complete a discovery
+
+    /// The POI manager is the sole owner of rewards and completion persistence.
     func completeDiscovery(_ discovery: Discovery) {
+        guard activeDiscovery?.id == discovery.id,
+              let poi = POIManager.shared.getPOI(by: discovery.poiId),
+              !poi.isCompleted else { return }
+        POIManager.shared.completePOI(poi)
+        guard poi.isCompleted else { return }
         if let index = discoveries.firstIndex(where: { $0.id == discovery.id }) {
             discoveries[index].isCompleted = true
         }
-        
-        // Grant rewards
-        if let poi = POIManager.shared.getPOI(by: discovery.poiId) {
-            for (resource, amount) in poi.rewardResources {
-                gameState.addResource(resource, amount: amount)
-            }
-            
-            if let loreId = poi.loreEntryId {
-                gameState.discoverLore(loreId)
-            }
-            
-            POIManager.shared.completePOI(poi)
-        }
-        
         activeDiscovery = nil
+        gameState.activeDiscovery = nil
         onDiscoveryCompleted?(discovery)
     }
     
@@ -81,6 +81,7 @@ class DiscoveryManager {
     func clear() {
         discoveries.removeAll()
         activeDiscovery = nil
+        gameState.activeDiscovery = nil
     }
 }
 
@@ -90,6 +91,8 @@ struct Discovery: Identifiable, Codable {
     let poiId: String
     let title: String
     let type: POIType
+    let lines: [String]
+    let question: String?
     var isCompleted: Bool
     var discoveredAt: Date = Date()
     

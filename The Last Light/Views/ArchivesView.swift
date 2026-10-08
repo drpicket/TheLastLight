@@ -42,7 +42,7 @@ struct ArchivesView: View {
                     
                     Spacer()
                     
-                    Text("Archives")
+                    Text("Investigation Journal")
                         .font(.system(size: 24, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
                     
@@ -99,10 +99,10 @@ struct ArchivesView: View {
                         Image(systemName: "book.closed")
                             .font(.system(size: 48))
                             .foregroundColor(.white.opacity(0.3))
-                        Text("No lore discovered yet")
+                        Text("No evidence recovered yet")
                             .font(.system(size: 18, design: .rounded))
                             .foregroundColor(.white.opacity(0.5))
-                        Text("Explore the galaxy to uncover the story of the Astrals")
+                        Text("Follow a signal, approach a contact, and recover its transmission.")
                             .font(.system(size: 14, design: .rounded))
                             .foregroundColor(.white.opacity(0.3))
                             .multilineTextAlignment(.center)
@@ -112,6 +112,8 @@ struct ArchivesView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: 12) {
+                            InvestigationSummary(entries: LoreSystem.discoveredEntries(gameState: gameState))
+
                             ForEach(filteredEntries) { entry in
                                 LoreEntryCard(entry: entry) {
                                     selectedEntry = entry
@@ -127,6 +129,38 @@ struct ArchivesView: View {
         .sheet(item: $selectedEntry) { entry in
             LoreDetailView(entry: entry)
         }
+    }
+}
+
+/// The journal gives context to evidence already encountered in flight.
+struct InvestigationSummary: View {
+    let entries: [LoreEntry]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("THE VANISHING · KNOWN FACTS")
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundColor(.cyan)
+            ForEach(entries.suffix(2)) { entry in
+                if let moment = StoryMoment.byLoreID[entry.id], let fact = moment.lines.last {
+                    Text("• \(fact)")
+                        .font(.system(size: 13, design: .rounded))
+                        .foregroundColor(.white.opacity(0.85))
+                }
+            }
+            if let last = entries.last, let question = StoryMoment.byLoreID[last.id]?.question {
+                Text("NEXT QUESTION · \(question)")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundColor(.cyan.opacity(0.85))
+            }
+            Text("Evidence recovered: \(entries.count)/\(LoreSystem.allEntries.count)")
+                .font(.system(size: 11, design: .rounded))
+                .foregroundColor(.white.opacity(0.5))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color.cyan.opacity(0.08))
+        .cornerRadius(12)
     }
 }
 

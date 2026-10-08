@@ -15,6 +15,7 @@ struct GameUI: View {
     @State private var showDiscoveryNotification = false
     @State private var lastDiscoveredPOI: POI?
     @State private var lastCompletedPOI: POI?
+    @State private var discoveryLineIndex = 0
     
     var body: some View {
         ZStack {
@@ -120,7 +121,8 @@ struct GameUI: View {
             }
             
             // Right-side contextual action leaves the movement control free.
-            if let id = gameState.nearbyPOIID,
+            if gameState.activeDiscovery == nil,
+               let id = gameState.nearbyPOIID,
                let poi = POIManager.shared.getPOI(by: id),
                let prompt = ScannerSystem.shared.getInteractionPrompt(for: poi) {
                 VStack {
@@ -293,6 +295,48 @@ struct GameUI: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.spring(), value: showRegionNotification)
             }
+
+            if let discovery = gameState.activeDiscovery {
+                Color.black.opacity(0.65).ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 18) {
+                    Label("TRANSMISSION RECOVERED", systemImage: discovery.icon)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(.cyan)
+                    Text(discovery.title)
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                    Text(discovery.lines[min(discoveryLineIndex, discovery.lines.count - 1)])
+                        .font(.system(size: 17, design: .rounded))
+                        .foregroundColor(.white.opacity(0.9))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if discoveryLineIndex == discovery.lines.count - 1, let question = discovery.question {
+                        Text(question)
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundColor(.cyan)
+                    }
+                    Button(discoveryLineIndex < discovery.lines.count - 1 ? "Continue" : "Recover Evidence") {
+                        if discoveryLineIndex < discovery.lines.count - 1 {
+                            discoveryLineIndex += 1
+                        } else {
+                            scene?.completeActiveDiscovery()
+                        }
+                    }
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(12)
+                    .background(Color.cyan)
+                    .cornerRadius(10)
+                }
+                .padding(20)
+                .frame(maxWidth: 380)
+                .background(Color(red: 0.04, green: 0.07, blue: 0.14))
+                .cornerRadius(16)
+                .padding(20)
+            }
+        }
+        .onChange(of: gameState.activeDiscovery?.id) { _, _ in
+            discoveryLineIndex = 0
         }
         .onReceive(NotificationCenter.default.publisher(for: .starCollected)) { notification in
             if let starType = notification.object as? StarType {

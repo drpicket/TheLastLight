@@ -400,19 +400,37 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     
     /// Called by the contextual touch control (or by tapping a nearby contact).
     func interactWithNearbyPOI() {
-        guard let id = gameState.nearbyPOIID,
+        guard !DiscoveryManager.shared.hasActiveDiscovery(),
+              let id = gameState.nearbyPOIID,
               let poi = POIManager.shared.getPOI(by: id), poi.isDiscovered,
               poi.canInteract,
               scannerSystem.isInInteractionRange(poi, playerPosition: playerShip.position) else { return }
 
-        POIManager.shared.completePOI(poi)
-        if poi.isCompleted {
-            if gameState.selectedPOIID == id { gameState.selectedPOIID = nil }
-            gameState.nearbyPOIID = nil
-            scannerSystem.scan(playerPosition: playerShip.position)
-            NotificationCenter.default.post(name: .poiCompleted, object: poi)
-            AudioManager.shared.playEffect("signal")
+        if poi.loreEntryId != nil {
+            playerShip.stop()
+            gameState.joystickDirection = .zero
+            let discovery = DiscoveryManager.shared.createDiscovery(for: poi)
+            DiscoveryManager.shared.startDiscovery(discovery)
+        } else {
+            POIManager.shared.completePOI(poi)
+            finishInteraction(with: poi)
         }
+    }
+
+    func completeActiveDiscovery() {
+        guard let discovery = DiscoveryManager.shared.getActiveDiscovery(),
+              let poi = POIManager.shared.getPOI(by: discovery.poiId) else { return }
+        DiscoveryManager.shared.completeDiscovery(discovery)
+        finishInteraction(with: poi)
+    }
+
+    private func finishInteraction(with poi: POI) {
+        guard poi.isCompleted else { return }
+        if gameState.selectedPOIID == poi.id { gameState.selectedPOIID = nil }
+        gameState.nearbyPOIID = nil
+        scannerSystem.scan(playerPosition: playerShip.position)
+        NotificationCenter.default.post(name: .poiCompleted, object: poi)
+        AudioManager.shared.playEffect("signal")
     }
 
     private func contact(at point: CGPoint) -> POI? {
@@ -546,7 +564,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         drainEnergy()
         updatePOIVisibility()
-        checkLoreDiscovery()
         checkGameConditions()
     }
     

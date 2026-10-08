@@ -4,3 +4,14 @@
 DerivedData/
 build/
 *.xcresult
+# Xcode Build and Indexing files
+.build/
+DerivedData/
+build/
+*.xcodeproj/project.xcworkspace/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# OpenCode snapshots cache
+.local/share/opencode/
+

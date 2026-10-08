@@ -44,16 +44,23 @@ class POIManager {
             let scale = min(1, max(radius, 1) / 800)
             let position = CGPoint(x: center.x + contact.1.x * scale,
                                    y: center.y + contact.1.y * scale)
-            let poi = createPOI(id: id, type: contact.0, position: position, region: region)
+            let poi = createPOI(id: id, type: contact.0, position: position)
+            // Evidence is tied to a place, never rerolled when loading a save.
+            let storySlot: Int?
+            if region == .silentBelt {
+                storySlot = [1: 0, 2: 2, 5: 1][index]
+            } else {
+                storySlot = [1: 0, 2: 1, 4: 2][index]
+            }
+            poi.loreEntryId = storySlot.map { region.loreEntryIds[$0] }
             poi.isDiscovered = gameState.discoveredPOIs.contains(id)
             poi.isCompleted = gameState.completedPOIs.contains(id)
             return poi
         }
     }
 
-    private func createPOI(id: String, type: POIType, position: CGPoint, region: Region) -> POI {
+    private func createPOI(id: String, type: POIType, position: CGPoint) -> POI {
         var rewardResources: [ResourceType: Int] = [:]
-        var loreEntryId: String? = nil
         var requiredUpgrade: UpgradeType? = nil
         var signalStrength: Double? = nil
         
@@ -63,20 +70,16 @@ class POIManager {
         case .unknownSignal:
             rewardResources = [.signal: Int.random(in: 10...25)]
             signalStrength = Double.random(in: 0.3...0.9)
-            loreEntryId = region.loreEntryIds.randomElement()
         case .abandonedProbe:
             rewardResources = [.fragments: Int.random(in: 3...8), .signal: Int.random(in: 5...15)]
-            loreEntryId = region.loreEntryIds.randomElement()
         case .anomaly:
             rewardResources = [.energy: Int.random(in: 15...30), .fragments: Int.random(in: 5...10)]
             requiredUpgrade = .gravityDrive
             signalStrength = Double.random(in: 0.6...1.0)
         case .derelictShip:
             rewardResources = [.fragments: Int.random(in: 8...15), .signal: Int.random(in: 10...20)]
-            loreEntryId = region.loreEntryIds.randomElement()
         case .ancientStructure:
             rewardResources = [.signal: Int.random(in: 20...40), .fragments: Int.random(in: 10...20)]
-            loreEntryId = region.loreEntryIds.randomElement()
             requiredUpgrade = .signalDecoder
         case .hiddenObject:
             rewardResources = [.energy: Int.random(in: 20...40), .fragments: Int.random(in: 10...20), .signal: Int.random(in: 15...30)]
@@ -90,7 +93,6 @@ class POIManager {
             type: type,
             position: position,
             signalStrength: signalStrength,
-            loreEntryId: loreEntryId,
             rewardResources: rewardResources,
             requiredUpgrade: requiredUpgrade
         )
