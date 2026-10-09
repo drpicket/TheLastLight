@@ -422,16 +422,14 @@ class GameState: ObservableObject {
         case (4, .upgrade): advance = true
         case (6, .poi): advance = true
         case (7, .volatile): advance = true
+        case (7, .slingshot): advance = true
         default: break
         }
         // Final step resolves the act: jackpot + completion flag.
-        if directiveIndex == Self.directives.count - 1, case .volatile = event {
-            directiveComplete = true
-            starEnergy += 50
-            addResource(.signal, amount: 25)
-            ventRisk(0.4)
-            saveGame()
-            NotificationCenter.default.post(name: .directiveChanged, object: nil)
+        if directiveIndex == Self.directives.count - 1 {
+            if case .volatile = event { completeDirectiveFinale() }
+            else if case .slingshot = event { completeDirectiveFinale() }
+            else if case .constellation = event { completeDirectiveFinale() }
             return
         }
         // Star/region thresholds checked in GameScene directly.
@@ -444,8 +442,16 @@ class GameState: ObservableObject {
         }
     }
 
-    func checkDirectiveThresholds() {
-        if directiveIndex == 0 && totalStarsCollected >= 6 {
+    private func completeDirectiveFinale() {
+        directiveComplete = true
+        starEnergy += 50
+        addResource(.signal, amount: 25)
+        ventRisk(0.4)
+        saveGame()
+        NotificationCenter.default.post(name: .directiveChanged, object: nil)
+    }
+
+    func checkDirectiveThresholds() {        if directiveIndex == 0 && totalStarsCollected >= 6 {
             directiveIndex = 1
             NotificationCenter.default.post(name: .directiveChanged, object: nil)
             saveGame()
