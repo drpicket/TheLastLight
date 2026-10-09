@@ -599,6 +599,13 @@ struct ScannerDisplay: View {
                             Text("\(poi.riskLevel.displayName) · \(distance)m")
                                 .font(.system(size: 9, design: .rounded))
                                 .foregroundColor(Color(poi.riskLevel.color))
+                            if poi.isStorm {
+                                let left = Int(GhostSignalDecay.shared.getRemainingStormTime(
+                                    for: poi.id, total: EnhancementConfig.stormDuration))
+                                Text("FADES IN \(max(0, left))s · #\(poi.stormOrder + 1)")
+                                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                                    .foregroundColor(.purple)
+                            }
                         }
                         if gameState.selectedPOIID == poi.id {
                             Image(systemName: "location.fill").foregroundColor(.cyan)
