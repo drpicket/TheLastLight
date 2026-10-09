@@ -1054,6 +1054,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             stalker = nil
             gameState.stalkerActive = false
             gameState.stalkerDistance = 9999
+            // Relief beat: the hunter losing interest must feel like a reward.
+            AudioManager.shared.playEffect("signal")
             NotificationCenter.default.post(name: .stalkerChanged, object: nil)
             return
         }
