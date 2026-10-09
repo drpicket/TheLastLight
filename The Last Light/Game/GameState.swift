@@ -309,6 +309,12 @@ class GameState: ObservableObject {
         stormNextIn = EnhancementConfig.stormInterval
         stormPOIIDs = []
         stormChainIndex = 0
+        // Arriving in the Nebula with Act 1 closed opens Act 2.
+        if region == .shatteredNebula && directiveComplete {
+            directiveComplete = false
+            directiveIndex = 8
+            NotificationCenter.default.post(name: .directiveChanged, object: nil)
+        }
         saveGame()
     }
 
@@ -396,7 +402,12 @@ class GameState: ObservableObject {
         DirectiveStep(title: "Upgrade the Wayfarer", hint: "Buy any ship upgrade with star energy"),
         DirectiveStep(title: "Leave the Silent Belt", hint: "Collect 50 stars to unlock the Shattered Nebula"),
         DirectiveStep(title: "Chart the Nebula", hint: "Complete 2 contacts in the Shattered Nebula"),
-        DirectiveStep(title: "Master the light", hint: "Reach a x5 combo or collect a volatile star"),
+        DirectiveStep(title: "Master the light", hint: "Reach a x5 combo, slingshot, or volatile — closes Act 1"),
+        // Act 2: Shattered Nebula.
+        DirectiveStep(title: "Feed the Nebula", hint: "Collect 25 stars in the Shattered Nebula"),
+        DirectiveStep(title: "Enter the anomaly", hint: "Complete the gravitational anomaly contact"),
+        DirectiveStep(title: "Weather the Nebula storm", hint: "Complete a storm chain or constellation"),
+        DirectiveStep(title: "Push to the Forgotten Orbit", hint: "Collect 150 total stars — closes Act 2"),
     ]
 
     var currentDirective: DirectiveStep {
@@ -408,6 +419,8 @@ class GameState: ObservableObject {
         case 0: return (min(totalStarsCollected, 6), 6)
         case 3: return (min(stormChainIndex, EnhancementConfig.stormPOICount), EnhancementConfig.stormPOICount)
         case 5: return (min(totalStarsCollected, 50), 50)
+        case 8: return (min(regionStarsCollected, 25), 25)
+        case 11: return (min(totalStarsCollected, 150), 150)
         default: return (directiveComplete ? 1 : 0, 1)
         }
     }
@@ -423,6 +436,10 @@ class GameState: ObservableObject {
         case (6, .poi): advance = true
         case (7, .volatile): advance = true
         case (7, .slingshot): advance = true
+        case (7, .constellation): advance = true
+        case (9, .poi(let id)) where id.hasSuffix("_poi_3"): advance = true
+        case (10, .stormChain): advance = true
+        case (10, .constellation): advance = true
         default: break
         }
         // Final step resolves the act: jackpot + completion flag.
@@ -459,6 +476,12 @@ class GameState: ObservableObject {
             directiveIndex = 6
             NotificationCenter.default.post(name: .directiveChanged, object: nil)
             saveGame()
+        } else if directiveIndex == 8 && regionStarsCollected >= 25 {
+            directiveIndex = 9
+            NotificationCenter.default.post(name: .directiveChanged, object: nil)
+            saveGame()
+        } else if directiveIndex == 11 && totalStarsCollected >= 150 {
+            completeDirectiveFinale()
         }
     }
 
