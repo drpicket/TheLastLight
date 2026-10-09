@@ -202,27 +202,48 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             worldNode.addChild(star)
             starNodes.append(star)
         }
+        // Density fix: bonus near-field stars so the first minutes feel alive.
+        for _ in 0..<(region.starCount / 4) {
+            let angle = CGFloat.random(in: 0...CGFloat.pi * 2)
+            let dist = CGFloat.random(in: 120...900)
+            let pos = CGPoint(x: cos(angle) * dist, y: sin(angle) * dist)
+            let type = pickStarType()
+            let volatile = (type == .golden || type == .ancient) && Double.random(in: 0...1) < EnhancementConfig.volatileChance
+            let star = StarNode(type: type, isVolatile: volatile)
+            star.position = pos
+            worldNode.addChild(star)
+            starNodes.append(star)
+        }
     }
 
     private func spawnRespawnStar() {
-        guard starNodes.count < region.starCount + 10 else { return }
-        let edge = CGFloat.random(in: 0..<4)
-        let half = worldSize / 2 - 120
-        let pos: CGPoint
-        switch Int(edge) {
-        case 0: pos = CGPoint(x: CGFloat.random(in: -half...half), y: -half + CGFloat.random(in: 0...200))
-        case 1: pos = CGPoint(x: CGFloat.random(in: -half...half), y: half - CGFloat.random(in: 0...200))
-        case 2: pos = CGPoint(x: -half + CGFloat.random(in: 0...200), y: CGFloat.random(in: -half...half))
-        default: pos = CGPoint(x: half - CGFloat.random(in: 0...200), y: CGFloat.random(in: -half...half))
+        guard starNodes.count < region.starCount + 30 else { return }
+        // 2-at-a-time respawns; bias near the player so combos stay alive.
+        for _ in 0..<2 {
+            let pos: CGPoint
+            if Double.random(in: 0...1) < 0.6 {
+                let angle = CGFloat.random(in: 0...CGFloat.pi * 2)
+                let dist = CGFloat.random(in: 350...800)
+                pos = CGPoint(
+                    x: playerShip.position.x + cos(angle) * dist,
+                    y: playerShip.position.y + sin(angle) * dist
+                )
+            } else {
+                let half = worldSize / 2 - 120
+                pos = CGPoint(
+                    x: CGFloat.random(in: -half...half),
+                    y: CGFloat.random(in: -half...half)
+                )
+            }
+            let type = pickStarType()
+            let volatile = (type == .golden || type == .ancient) && Double.random(in: 0...1) < EnhancementConfig.volatileChance
+            let star = StarNode(type: type, isVolatile: volatile)
+            star.position = pos
+            star.alpha = 0
+            worldNode.addChild(star)
+            starNodes.append(star)
+            star.run(SKAction.fadeIn(withDuration: 0.8))
         }
-        let type = pickStarType()
-        let volatile = (type == .golden || type == .ancient) && Double.random(in: 0...1) < EnhancementConfig.volatileChance
-        let star = StarNode(type: type, isVolatile: volatile)
-        star.position = pos
-        star.alpha = 0
-        worldNode.addChild(star)
-        starNodes.append(star)
-        star.run(SKAction.fadeIn(withDuration: 0.8))
     }
 
     private func addAsteroids() {
@@ -517,6 +538,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard poi.isCompleted else { return }
         if gameState.selectedPOIID == poi.id { gameState.selectedPOIID = nil }
         gameState.nearbyPOIID = nil
+        gameState.advanceDirectiveIfNeeded(event: .poi(poi.id))
         // Feature C: storm chain progresses in stormOrder.
         if poi.isStorm {
             GhostSignalDecay.shared.stopTracking(poi.id)
@@ -659,9 +681,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         scannerSystem.update(deltaTime: deltaTime, playerPosition: playerShip.position)
 
         if gameState.joystickDirection != .zero {
+            // Dead-ship sluggishness during power failure.
+            let scale: CGFloat = gameState.powerFailureActive ? 0.4 : 1.0
             playerShip.moveToward(CGPoint(
-                x: playerShip.position.x + gameState.joystickDirection.dx * 100,
-                y: playerShip.position.y - gameState.joystickDirection.dy * 100
+                x: playerShip.position.x + gameState.joystickDirection.dx * 100 * scale,
+                y: playerShip.position.y - gameState.joystickDirection.dy * 100 * scale
             ))
             wasUsingJoystick = true
         } else if wasUsingJoystick {
@@ -687,6 +711,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         updateStalker(deltaTime: deltaTime)
         updateStorm(deltaTime: deltaTime)
         updateRiskOverlay()
+        pollDirectives(deltaTime: deltaTime)
         drainEnergy()
         updatePOIVisibility()
         checkLoreDiscovery()
@@ -747,9 +772,82 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func drainEnergy() {
         let drain = region.energyDrainRate / 60.0
         gameState.useEnergy(drain)
-        if gameState.shipEnergy <= 0 {
+        // Record last safe spot while powered.
+        if gameState.shipEnergy > 0.3 {
+            safePositionTimer += 1.0 / 60.0
+            if safePositionTimer >= 2.0 {
+                safePositionTimer = 0
+                gameState.lastSafePosition = playerShip.position
+            }
+        }
+        if gameState.shipEnergy <= 0 && !gameState.powerFailureActive {
+            gameState.shipEnergy = 0
+            gameState.beginPowerFailure()
+            AudioManager.shared.playEffect("volatileExpire")
+        }
+        if gameState.powerFailureActive {
+            // Sluggish dead-ship drift while counting down.
+            gameState.powerFailureCountdown -= 1.0 / 60.0
+            if gameState.shipEnergy > 0.05 {
+                // Rebooted by collecting a star.
+                gameState.endPowerFailure(rescued: true)
+                playerShip.showShield()
+            } else if gameState.powerFailureCountdown <= 0 {
+                rescueStrandedShip()
+            }
+        }
+        if gameState.shipEnergy <= 0 && !gameState.powerFailureActive {
             onEnergyDepleted?()
         }
+    }
+
+    private var safePositionTimer: Double = 0
+    private var directivePollTimer: Double = 0
+
+    /// Poll-based directive advancement — keeps all quest logic in this file.
+    private func pollDirectives(deltaTime: Double) {
+        directivePollTimer += deltaTime
+        guard directivePollTimer >= 0.5 else { return }
+        directivePollTimer = 0
+        gameState.checkDirectiveThresholds()
+        let idx = gameState.directiveIndex
+        switch idx {
+        case 4 where !gameState.upgradeLevels.isEmpty:
+            gameState.advanceDirectiveIfNeeded(event: .upgrade)
+        case 6:
+            // 2 contacts completed in the Shattered Nebula.
+            let done = gameState.completedPOIs.filter { $0.hasPrefix(Region.shatteredNebula.rawValue) }.count
+            if done >= 2 || gameState.currentRegion == .shatteredNebula && gameState.completedPOIs.count >= 4 {
+                gameState.advanceDirectiveIfNeeded(event: .poi("poll"))
+            }
+        case 7 where gameState.comboMultiplier >= 5:
+            gameState.advanceDirectiveIfNeeded(event: .volatile)
+        default: break
+        }
+        // Storm chain completions feed directive 3 regardless of path.
+        if gameState.directiveIndex == 3 && !gameState.completedConstellations.isEmpty {
+            gameState.advanceDirectiveIfNeeded(event: .stormChain)
+        }
+    }
+
+    private func rescueStrandedShip() {
+        // Wayfarer rescue: tow to last safe position, tax 10% energy stores.
+        let tax = Int(Double(gameState.starEnergy) * EnhancementConfig.powerFailureEnergyTax)
+        gameState.starEnergy = max(0, gameState.starEnergy - tax)
+        gameState.shipEnergy = 0.35
+        gameState.shipShield = 0.5
+        gameState.resetCombo()
+        gameState.noiseLevel = 0
+        gameState.ventRisk(0.2)
+        stalker?.removeFromParent()
+        stalker = nil
+        gameState.stalkerActive = false
+        playerShip.position = gameState.lastSafePosition
+        playerShip.stop()
+        playerShip.grantInvulnerability(duration: 2.0, now: sceneTime)
+        playerShip.showShield()
+        gameState.endPowerFailure(rescued: false)
+        AudioManager.shared.playEffect("warp")
     }
     
     private func checkLoreDiscovery() {
@@ -823,6 +921,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         _ = award
         playerShip.showCollectionRadius()
         VisualGhostTrails.shared.recordTrail(at: starNode.position, in: worldNode)
+        if wasVolatile {
+            gameState.advanceDirectiveIfNeeded(event: .volatile)
+        }
         onStarCollected?(starType)
         NotificationCenter.default.post(name: .starCollected, object: starType)
         NotificationCenter.default.post(name: .comboChanged, object: nil)
@@ -948,7 +1049,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         let dist = s.update(
             deltaTime: CGFloat(deltaTime),
             playerPos: playerShip.position,
-            aggression: region.stalkerAggression
+            aggression: region.stalkerAggression,
+            playerTopSpeed: playerShip.maxSpeed
         )
         gameState.stalkerDistance = dist
         if dist < s.touchRadius + 18 {

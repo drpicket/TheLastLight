@@ -79,6 +79,15 @@ class GameState: ObservableObject {
     @Published var completedConstellations: Set<String> = []
     @Published var memoryAnchors: Set<String> = []
 
+    // MARK: - Power failure (energy 0 now has consequences)
+    @Published var powerFailureActive: Bool = false
+    @Published var powerFailureCountdown: Double = 0
+    @Published var lastSafePosition: CGPoint = .zero
+
+    // MARK: - Directive (storyline quests)
+    @Published var directiveIndex: Int = 0
+    @Published var directiveComplete: Bool = false
+
     var shipStats: ShipStats {
         ShipStats(
             maxEnergy: 100.0 + Double(upgradeLevels[.energy] ?? 0) * 25.0,
@@ -363,7 +372,88 @@ class GameState: ObservableObject {
         if let newest = discoveredLore.sorted().last {
             memoryAnchors.insert(newest)
         }
+        advanceDirectiveIfNeeded(event: .constellation)
         saveGame()
+    }
+
+    // MARK: - Directives (storyline)
+    enum DirectiveEvent { case stars, poi(String), stormChain, upgrade, region, volatile, slingshot, constellation }
+
+    struct DirectiveStep {
+        let title: String
+        let hint: String
+    }
+
+    static let directives: [DirectiveStep] = [
+        DirectiveStep(title: "Follow the starter lights", hint: "Collect 6 stars — chain them for combo"),
+        DirectiveStep(title: "Find Voss's fragment", hint: "Investigate the Stellar Fragment contact"),
+        DirectiveStep(title: "Decode the whisper", hint: "Complete the Unknown Signal contact"),
+        DirectiveStep(title: "Ride the signal storm", hint: "Complete storm signals in order (chain)"),
+        DirectiveStep(title: "Upgrade the Wayfarer", hint: "Buy any ship upgrade with star energy"),
+        DirectiveStep(title: "Leave the Silent Belt", hint: "Collect 50 stars to unlock the Shattered Nebula"),
+        DirectiveStep(title: "Chart the Nebula", hint: "Complete 2 contacts in the Shattered Nebula"),
+        DirectiveStep(title: "Master the light", hint: "Reach a x5 combo or collect a volatile star"),
+    ]
+
+    var currentDirective: DirectiveStep {
+        Self.directives[min(directiveIndex, Self.directives.count - 1)]
+    }
+
+    func directiveProgress() -> (done: Int, total: Int) {
+        switch directiveIndex {
+        case 0: return (min(totalStarsCollected, 6), 6)
+        case 3: return (min(stormChainIndex, EnhancementConfig.stormPOICount), EnhancementConfig.stormPOICount)
+        case 5: return (min(totalStarsCollected, 50), 50)
+        default: return (directiveComplete ? 1 : 0, 1)
+        }
+    }
+
+    func advanceDirectiveIfNeeded(event: DirectiveEvent) {
+        guard !directiveComplete && directiveIndex < Self.directives.count else { return }
+        var advance = false
+        switch (directiveIndex, event) {
+        case (1, .poi(let id)) where id.hasSuffix("_poi_0") || id.hasSuffix("_poi_3"): advance = true
+        case (2, .poi): advance = true
+        case (3, .stormChain): advance = true
+        case (4, .upgrade): advance = true
+        case (6, .poi): advance = true
+        case (7, .volatile): advance = true
+        default: break
+        }
+        // Star/region thresholds checked in GameScene directly.
+        if advance {
+            directiveIndex = min(directiveIndex + 1, Self.directives.count - 1)
+            starEnergy += 15
+            addResource(.energy, amount: 10)
+            saveGame()
+            NotificationCenter.default.post(name: .directiveChanged, object: nil)
+        }
+    }
+
+    func checkDirectiveThresholds() {
+        if directiveIndex == 0 && totalStarsCollected >= 6 {
+            directiveIndex = 1
+            NotificationCenter.default.post(name: .directiveChanged, object: nil)
+            saveGame()
+        } else if directiveIndex == 5 && totalStarsCollected >= 50 {
+            directiveIndex = 6
+            NotificationCenter.default.post(name: .directiveChanged, object: nil)
+            saveGame()
+        }
+    }
+
+    // MARK: - Power failure
+    func beginPowerFailure() {
+        powerFailureActive = true
+        powerFailureCountdown = EnhancementConfig.powerFailureGrace
+        NotificationCenter.default.post(name: .powerChanged, object: nil)
+    }
+
+    func endPowerFailure(rescued: Bool) {
+        powerFailureActive = false
+        powerFailureCountdown = 0
+        NotificationCenter.default.post(name: .powerChanged, object: nil)
+        if !rescued { saveGame() }
     }
 
     // MARK: - Persistence
@@ -420,4 +510,6 @@ extension Notification.Name {
     static let comboChanged = Notification.Name("comboChanged")
     static let stormChanged = Notification.Name("stormChanged")
     static let stalkerChanged = Notification.Name("stalkerChanged")
+    static let directiveChanged = Notification.Name("directiveChanged")
+    static let powerChanged = Notification.Name("powerChanged")
 }

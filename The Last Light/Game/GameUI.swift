@@ -55,6 +55,49 @@ struct GameUI: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
 
+                // Directive (storyline objective)
+                if !gameState.directiveComplete && gameState.directiveIndex < GameState.directives.count {
+                    let step = gameState.currentDirective
+                    let prog = gameState.directiveProgress()
+                    VStack(spacing: 4) {
+                        Text(step.title.uppercased())
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(.yellow)
+                        Text(step.hint)
+                            .font(.system(size: 10, design: .rounded))
+                            .foregroundColor(.white.opacity(0.7))
+                        if prog.total > 1 {
+                            GeometryReader { geo in
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color.yellow.opacity(0.85))
+                                    .frame(width: geo.size.width * min(1, CGFloat(prog.done) / CGFloat(prog.total)), height: 4)
+                            }
+                            .frame(width: 150, height: 4)
+                            .background(Color.black.opacity(0.4))
+                            .cornerRadius(3)
+                            Text("\(prog.done)/\(prog.total)")
+                                .font(.system(size: 9, design: .rounded))
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.55))
+                    .cornerRadius(14)
+                }
+
+                // Power failure (energy 0 now has consequences)
+                if gameState.powerFailureActive {
+                    Label("POWER FAILURE — COLLECT A STAR IN \(Int(ceil(gameState.powerFailureCountdown)))s OR LOSE 10% STORES", systemImage: "battery.0")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.red.opacity(0.75))
+                        .cornerRadius(12)
+                        .padding(.top, 4)
+                }
+
                 // Feature A: combo meter
                 if gameState.comboCount >= 2 {
                     HStack {

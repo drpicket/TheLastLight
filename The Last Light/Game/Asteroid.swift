@@ -207,7 +207,7 @@ class VoidStalkerNode: SKNode {
     }
 
     @discardableResult
-    func update(deltaTime: CGFloat, playerPos: CGPoint, aggression: Double) -> CGFloat {
+    func update(deltaTime: CGFloat, playerPos: CGPoint, aggression: Double, playerTopSpeed: CGFloat) -> CGFloat {
         if stunLeft > 0 {
             stunLeft -= Double(deltaTime)
             if stunLeft <= 0 {
@@ -219,8 +219,13 @@ class VoidStalkerNode: SKNode {
         let dx = playerPos.x - position.x
         let dy = playerPos.y - position.y
         let dist = max(1, hypot(dx, dy))
-        let huntSpeed = EnhancementConfig.stalkerHuntSpeed * CGFloat(0.8 + aggression * 0.4)
-        let useSpeed = state == .hunting ? huntSpeed : cruiseSpeed
+        var huntSpeed = EnhancementConfig.stalkerHuntSpeed * CGFloat(0.8 + aggression * 0.4)
+        // Fair chase: until engine 2, stalker caps at player speed +10%.
+        let engineLevel = GameState.shared.upgradeLevels[.engine] ?? 0
+        if engineLevel < 2 {
+            huntSpeed = min(huntSpeed, playerTopSpeed * 1.1)
+        }
+        let useSpeed = state == .hunting ? huntSpeed : min(cruiseSpeed, playerTopSpeed)
         position.x += dx / dist * useSpeed * deltaTime
         position.y += dy / dist * useSpeed * deltaTime
         zRotation = atan2(dy, dx)
