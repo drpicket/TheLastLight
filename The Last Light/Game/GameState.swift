@@ -420,6 +420,16 @@ class GameState: ObservableObject {
         case (7, .volatile): advance = true
         default: break
         }
+        // Final step resolves the act: jackpot + completion flag.
+        if directiveIndex == Self.directives.count - 1, case .volatile = event {
+            directiveComplete = true
+            starEnergy += 50
+            addResource(.signal, amount: 25)
+            ventRisk(0.4)
+            saveGame()
+            NotificationCenter.default.post(name: .directiveChanged, object: nil)
+            return
+        }
         // Star/region thresholds checked in GameScene directly.
         if advance {
             directiveIndex = min(directiveIndex + 1, Self.directives.count - 1)

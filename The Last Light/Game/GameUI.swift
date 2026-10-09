@@ -16,6 +16,8 @@ struct GameUI: View {
     @State private var lastDiscoveredPOI: POI?
     @State private var lastCompletedPOI: POI?
     @State private var discoveryLineIndex = 0
+    @State private var showDirectiveToast = false
+    @State private var directiveToastText = ""
     
     var body: some View {
         ZStack {
@@ -309,6 +311,24 @@ struct GameUI: View {
                 .allowsHitTesting(false)
             }
 
+            // Directive completion flash
+            if showDirectiveToast {
+                VStack {
+                    Spacer()
+                    Label(directiveToastText, systemImage: "checkmark.seal.fill")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                        .background(Color.yellow)
+                        .cornerRadius(20)
+                        .padding(.bottom, 220)
+                }
+                .allowsHitTesting(false)
+                .transition(.scale.combined(with: .opacity))
+                .animation(.spring(), value: showDirectiveToast)
+            }
+
             // Star collection notification
             if showStarCollection, let starType = lastCollectedStar {
                 VStack {
@@ -493,6 +513,18 @@ struct GameUI: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                     if lastCompletedPOI?.id == poi.id { lastCompletedPOI = nil }
                 }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .directiveChanged)) { _ in
+            if gameState.directiveComplete {
+                directiveToastText = "WAYFARER DIRECTIVE COMPLETE"
+            } else {
+                directiveToastText = "DIRECTIVE: \(gameState.currentDirective.title.uppercased())"
+            }
+            showDirectiveToast = true
+            AudioManager.shared.playEffect("constellation")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                showDirectiveToast = false
             }
         }
         .sheet(isPresented: $showPauseMenu) {
