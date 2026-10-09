@@ -20,6 +20,8 @@ struct SaveSystem {
         var totalVolatilesCollected: Int?
         var completedConstellations: Set<String>?
         var memoryAnchors: Set<String>?
+        var directiveIndex: Int?
+        var directiveComplete: Bool?
     }
 
     static func save(gameState: GameState = GameState.shared) {
@@ -38,7 +40,9 @@ struct SaveSystem {
             bestCombo: gameState.bestCombo,
             totalVolatilesCollected: gameState.totalVolatilesCollected,
             completedConstellations: gameState.completedConstellations,
-            memoryAnchors: gameState.memoryAnchors
+            memoryAnchors: gameState.memoryAnchors,
+            directiveIndex: gameState.directiveIndex,
+            directiveComplete: gameState.directiveComplete
         )
         do {
             let encoded = try JSONEncoder().encode(data)
