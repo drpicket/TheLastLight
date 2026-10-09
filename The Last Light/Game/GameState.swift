@@ -300,6 +300,10 @@ class GameState: ObservableObject {
         noiseLevel = 0
         stalkerActive = false
         resetCombo()
+        // A tow to a new region resolves any power failure outright.
+        powerFailureActive = false
+        powerFailureCountdown = 0
+        lastSafePosition = .zero
         stormActive = false
         stormTimeLeft = 0
         stormNextIn = EnhancementConfig.stormInterval
