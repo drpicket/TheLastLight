@@ -834,8 +834,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             gameState.advanceDirectiveIfNeeded(event: .volatile)
         default: break
         }
-        // Storm chain completions feed directive 3 regardless of path.
-        if gameState.directiveIndex == 3 && !gameState.completedConstellations.isEmpty {
+        // Storm chain completions feed directives 3 and 10 regardless of path.
+        if (gameState.directiveIndex == 3 || gameState.directiveIndex == 10)
+            && !gameState.completedConstellations.isEmpty {
             gameState.advanceDirectiveIfNeeded(event: .stormChain)
         }
     }
