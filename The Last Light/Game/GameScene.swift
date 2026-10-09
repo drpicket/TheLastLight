@@ -963,6 +963,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     // MARK: - Feature A helpers
     private func updateVolatiles(deltaTime: Double) {
+        // Frozen mid-discovery, like the combo fuse: reading must not burn fuses.
+        guard DiscoveryManager.shared.hasActiveDiscovery() == false else { return }
         var expired: [StarNode] = []
         for star in starNodes where star.isVolatile {
             if star.tickFuse(deltaTime: deltaTime) { expired.append(star) }
