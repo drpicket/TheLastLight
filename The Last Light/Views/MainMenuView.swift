@@ -76,6 +76,24 @@ struct MainMenuView: View {
                     }
                 }
                 .padding(.horizontal, 40)
+
+                // First-flight brief: teach the loops before launch.
+                if !gameState.hasStartedGame {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("FLIGHT BRIEF")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.cyan)
+                        BriefRow(icon: "star.fill", text: "Chain stars for combo multipliers — gold stars go volatile")
+                        BriefRow(icon: "eye.fill", text: "Collecting makes noise. Noise wakes the stalker")
+                        BriefRow(icon: "cloud.bolt.fill", text: "Storms bring fading signals — follow the waypoint chain")
+                        BriefRow(icon: "battery.25", text: "Battery at zero strands you: grab a star or pay the tow")
+                    }
+                    .padding(14)
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(14)
+                    .padding(.horizontal, 40)
+                    .padding(.top, 16)
+                }
                 
                 Spacer()
                 
@@ -168,5 +186,23 @@ struct ScaleButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
             .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+/// One-line onboarding row for the flight brief.
+struct BriefRow: View {
+    let icon: String
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 12))
+                .foregroundColor(.cyan)
+                .frame(width: 18)
+            Text(text)
+                .font(.system(size: 12, design: .rounded))
+                .foregroundColor(.white.opacity(0.8))
+        }
     }
 }
