@@ -54,6 +54,76 @@ struct GameUI: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
+
+                // Feature A: combo meter
+                if gameState.comboCount >= 2 {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 4) {
+                            Text("x\(gameState.comboMultiplier) COMBO · \(gameState.comboCount)")
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                                .foregroundColor(gameState.comboMultiplier >= 5 ? .orange : .cyan)
+                            GeometryReader { geo in
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color.cyan.opacity(0.8))
+                                    .frame(width: geo.size.width * max(0, gameState.comboTimeLeft / EnhancementConfig.comboWindow), height: 5)
+                            }
+                            .frame(width: 140, height: 5)
+                            .background(Color.black.opacity(0.4))
+                            .cornerRadius(3)
+                            if gameState.bestCombo > 0 {
+                                Text("BEST \(gameState.bestCombo)")
+                                    .font(.system(size: 9, design: .rounded))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.55))
+                        .cornerRadius(14)
+                        Spacer()
+                    }
+                }
+
+                // Feature B: stalker warning
+                if gameState.stalkerActive {
+                    HStack {
+                        Spacer()
+                        Label("VOID STALKER \(Int(gameState.stalkerDistance))m — KEEP MOVING", systemImage: "eye.fill")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(.red)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.red.opacity(0.18))
+                            .cornerRadius(12)
+                        Spacer()
+                    }
+                    .padding(.top, 4)
+                }
+
+                // Feature C: storm banner
+                if gameState.stormActive {
+                    HStack {
+                        Spacer()
+                        Label("SIGNAL STORM · \(Int(gameState.stormTimeLeft))s · CHAIN \(gameState.stormChainIndex)/\(EnhancementConfig.stormPOICount)", systemImage: "cloud.bolt.fill")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(.purple)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.purple.opacity(0.2))
+                            .cornerRadius(12)
+                        Spacer()
+                    }
+                    .padding(.top, 4)
+                } else if gameState.stormNextIn < 20 {
+                    HStack {
+                        Spacer()
+                        Text("Storm incoming in \(Int(gameState.stormNextIn))s")
+                            .font(.system(size: 10, design: .rounded))
+                            .foregroundColor(.white.opacity(0.55))
+                        Spacer()
+                    }
+                }
                 
                 Spacer()
                 
@@ -205,7 +275,7 @@ struct GameUI: View {
                         HStack(spacing: 8) {
                             Image(systemName: "star.fill")
                                 .foregroundColor(Color(starType.color))
-                            Text("+\(starType.energyValue)")
+                            Text("+\(gameState.lastComboAward)x\(gameState.comboMultiplier)")
                                 .font(.system(size: 18, weight: .bold, design: .rounded))
                                 .foregroundColor(.white)
                         }
@@ -591,10 +661,4 @@ struct MenuButton: View {
     }
 }
 
-extension Notification.Name {
-    static let starCollected = Notification.Name("starCollected")
-    static let loreDiscovered = Notification.Name("loreDiscovered")
-    static let regionUnlocked = Notification.Name("regionUnlocked")
-    static let poiDiscovered = Notification.Name("poiDiscovered")
-    static let poiCompleted = Notification.Name("poiCompleted")
-}
+

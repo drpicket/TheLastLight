@@ -103,6 +103,10 @@ class POI: Identifiable, Codable {
     var loreEntryId: String?
     var rewardResources: [ResourceType: Int]
     var requiredUpgrade: UpgradeType?
+    // Feature C: ephemeral storm signals.
+    var isStorm: Bool = false
+    var stormOrder: Int = 0
+    var stormFuse: Double = 30.0
     
     init(
         id: String = UUID().uuidString,

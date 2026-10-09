@@ -86,14 +86,19 @@ enum StarType: String, Codable, CaseIterable {
 class StarNode: SKSpriteNode {
     let starType: StarType
     private var glowNode: SKShapeNode?
-    
-    init(type: StarType) {
+    // Feature A: volatile stars pulse and expire for bonus energy.
+    var isVolatile: Bool = false
+    var fuseLeft: Double = 0
+    private var volatileRing: SKShapeNode?
+
+    init(type: StarType, isVolatile: Bool = false) {
         self.starType = type
         let texture = StarNode.createStarTexture(size: type.size, color: type.color)
         super.init(texture: texture, color: .clear, size: CGSize(width: type.size, height: type.size))
         setupGlow()
         setupPhysics()
         startFloatingAnimation()
+        if isVolatile { makeVolatile(fuse: EnhancementConfig.volatileFuse) }
     }
     
     required init?(coder aDecoder: NSCoder) {
@@ -201,6 +206,7 @@ class StarNode: SKSpriteNode {
     func collect() {
         removeAllActions()
         glowNode?.removeAllActions()
+        volatileRing?.removeAllActions()
         
         let scaleUp = SKAction.scale(to: 1.5, duration: 0.1)
         let fadeOut = SKAction.fadeOut(withDuration: 0.2)
@@ -209,6 +215,49 @@ class StarNode: SKSpriteNode {
         
         run(sequence)
         glowNode?.run(sequence)
+    }
+
+    // MARK: - Feature A: Volatile
+    func makeVolatile(fuse: Double) {
+        isVolatile = true
+        fuseLeft = fuse
+        if volatileRing == nil {
+            let ring = SKShapeNode(circleOfRadius: starType.size * 0.9)
+            ring.strokeColor = SKColor(red: 1.0, green: 0.35, blue: 0.3, alpha: 0.95)
+            ring.lineWidth = 2
+            ring.fillColor = .clear
+            ring.zPosition = -1
+            addChild(ring)
+            volatileRing = ring
+            let pulse = SKAction.sequence([
+                SKAction.scale(to: 1.25, duration: 0.4),
+                SKAction.scale(to: 1.0, duration: 0.4)
+            ])
+            ring.run(SKAction.repeatForever(pulse))
+        }
+    }
+
+    /// Returns true when the fuse expired this tick.
+    @discardableResult
+    func tickFuse(deltaTime: Double) -> Bool {
+        guard isVolatile else { return false }
+        fuseLeft -= deltaTime
+        if let ring = volatileRing {
+            let frac = max(0, fuseLeft / EnhancementConfig.volatileFuse)
+            ring.alpha = 0.4 + 0.6 * (1.0 - frac)
+        }
+        if fuseLeft <= 0 {
+            expire()
+            return true
+        }
+        return false
+    }
+
+    func expire() {
+        removeAllActions()
+        let fade = SKAction.fadeOut(withDuration: 0.3)
+        let remove = SKAction.removeFromParent()
+        run(SKAction.sequence([fade, remove]))
     }
 }
 

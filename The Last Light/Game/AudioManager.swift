@@ -44,6 +44,33 @@ class AudioManager {
         case "collectAncient":
             duration = 0.8
             frequency = 1760
+        case "combo2":
+            duration = 0.35
+            frequency = 990
+        case "combo3":
+            duration = 0.4
+            frequency = 1174
+        case "combo5":
+            duration = 0.6
+            frequency = 1568
+        case "volatile":
+            duration = 0.7
+            frequency = 1480
+        case "volatileExpire":
+            duration = 0.4
+            frequency = 330
+        case "stalker":
+            duration = 0.8
+            frequency = 165
+        case "slingshot":
+            duration = 0.5
+            frequency = 740
+        case "storm":
+            duration = 1.0
+            frequency = 520
+        case "constellation":
+            duration = 1.2
+            frequency = 1318
         case "damage":
             duration = 0.3
             frequency = 220

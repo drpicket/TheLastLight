@@ -104,6 +104,37 @@ enum Region: String, Codable, CaseIterable, Identifiable, Hashable {
         case .heart: return 0.8
         }
     }
+
+    // Feature B tuning per region.
+    var stalkerAggression: Double {
+        switch self {
+        case .silentBelt: return 0.4
+        case .shatteredNebula: return 0.7
+        case .forgottenOrbit: return 0.6
+        case .blackExpanse: return 1.0
+        case .heart: return 0.5
+        }
+    }
+
+    var vortexCount: Int {
+        switch self {
+        case .silentBelt: return 2
+        case .shatteredNebula: return 5
+        case .forgottenOrbit: return 3
+        case .blackExpanse: return 4
+        case .heart: return 5
+        }
+    }
+
+    var vortexStrength: Double {
+        switch self {
+        case .silentBelt: return 60
+        case .shatteredNebula: return 140
+        case .forgottenOrbit: return 100
+        case .blackExpanse: return 120
+        case .heart: return 160
+        }
+    }
     
     var hasGravityAnomalies: Bool {
         switch self {

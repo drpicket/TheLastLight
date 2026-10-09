@@ -263,6 +263,33 @@ class PlayerShip: SKSpriteNode {
         }
     }
     
+    // MARK: - Feature B: vulnerability / phase
+    var invulnerableUntil: TimeInterval = 0
+    var phasedUntil: TimeInterval = 0
+    var currentTime: TimeInterval = 0
+
+    func isInvulnerable(at now: TimeInterval) -> Bool { now < invulnerableUntil }
+    func isPhased(at now: TimeInterval) -> Bool { now < phasedUntil }
+    func grantInvulnerability(duration: Double, now: TimeInterval) {
+        invulnerableUntil = now + duration
+    }
+    func activatePhase(duration: Double, now: TimeInterval) {
+        phasedUntil = now + duration
+        showShield()
+    }
+    func applyExternalForce(_ force: CGVector) {
+        guard let body = physicsBody else { return }
+        body.velocity = CGVector(dx: body.velocity.dx + force.dx, dy: body.velocity.dy + force.dy)
+    }
+    func slingshotBoost(direction: CGVector, power: CGFloat) {
+        guard let body = physicsBody else { return }
+        body.velocity = CGVector(
+            dx: body.velocity.dx + direction.dx * power,
+            dy: body.velocity.dy + direction.dy * power
+        )
+        showCollectionRadius()
+    }
+
     // MARK: - Visual Effects
     
     func showShield() {

@@ -13,12 +13,20 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var lastTouchLocation: CGPoint?
     private var gameState: GameState { GameState.shared }
     private let worldSize: CGFloat = 5000
-    private var starSpawnTimer: TimeInterval = 0
-    private var asteroidSpawnTimer: TimeInterval = 0
+    private var starRespawnTimer: TimeInterval = 0
+    private var starNodes: [StarNode] = []
+    private var asteroidNodes: [AsteroidNode] = []
+    private var vortexes: [GravityVortexNode] = []
+    private var stalker: VoidStalkerNode?
+    private var riskOverlay: SKShapeNode?
+    private var sceneTime: TimeInterval = 0
+    private var lastSlingshotAt: TimeInterval = 0
     var onStarCollected: ((StarType) -> Void)?
     var onLoreDiscovered: ((LoreEntry) -> Void)?
     var onRegionUnlocked: ((Region) -> Void)?
     var onEnergyDepleted: (() -> Void)?
+    var onComboChanged: ((Int, Int) -> Void)?
+    var onStormChanged: ((Bool) -> Void)?
     private var isReady = false
     
     // POI system
@@ -64,6 +72,19 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         AudioManager.shared.stopAmbientMusic()
     }
     
+    // MARK: - Pause Controls
+
+    func pause() {
+        isPaused = true
+        AudioManager.shared.stopAmbientMusic()
+    }
+
+    func resume() {
+        isPaused = false
+        lastUpdateTime = nil
+        AudioManager.shared.startAmbientMusic()
+    }
+
     func resumeScanner() {
         guard isReady, view != nil else { return }
         isPaused = false
@@ -127,22 +148,43 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         worldNode = SKNode()
         worldNode.name = "world"
         addChild(worldNode)
+        starNodes.removeAll()
+        asteroidNodes.removeAll()
+        vortexes.forEach { $0.removeFromParent() }
+        vortexes.removeAll()
+        stalker?.removeFromParent()
+        stalker = nil
         addNebulaEffects()
         addStars()
+        addAsteroids()
+        addVortexes()
         if region.hasAncientStructures {
             addAncientStructures()
         }
+        updateRiskOverlay()
     }
-    
+
+    private func pickStarType() -> StarType {
+        let weights = region.starWeights
+        let totalWeight = weights.values.reduce(0, +)
+        var roll = Int.random(in: 0..<totalWeight)
+        var type: StarType = .small
+        for candidate in StarType.allCases {
+            roll -= weights[candidate] ?? 0
+            if roll < 0 {
+                type = candidate
+                break
+            }
+        }
+        return type
+    }
+
     private func addStars() {
         let startingStars: [CGPoint] = [
             CGPoint(x: 65, y: -25), CGPoint(x: -85, y: 50),
             CGPoint(x: 110, y: 85), CGPoint(x: -130, y: -110),
             CGPoint(x: 225, y: 65), CGPoint(x: 30, y: 185)
         ]
-        let weights = region.starWeights
-        let totalWeight = weights.values.reduce(0, +)
-
         for index in 0..<region.starCount {
             let position: CGPoint
             if index < startingStars.count {
@@ -153,18 +195,65 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                     y: CGFloat.random(in: -worldSize / 2 + 80...worldSize / 2 - 80)
                 )
             }
-            var roll = Int.random(in: 0..<totalWeight)
-            var type: StarType = .small
-            for candidate in StarType.allCases {
-                roll -= weights[candidate] ?? 0
-                if roll < 0 {
-                    type = candidate
-                    break
-                }
-            }
-            let star = StarNode(type: type)
+            let type = pickStarType()
+            let volatile = (type == .golden || type == .ancient) && Double.random(in: 0...1) < EnhancementConfig.volatileChance
+            let star = StarNode(type: type, isVolatile: volatile)
             star.position = position
             worldNode.addChild(star)
+            starNodes.append(star)
+        }
+    }
+
+    private func spawnRespawnStar() {
+        guard starNodes.count < region.starCount + 10 else { return }
+        let edge = CGFloat.random(in: 0..<4)
+        let half = worldSize / 2 - 120
+        let pos: CGPoint
+        switch Int(edge) {
+        case 0: pos = CGPoint(x: CGFloat.random(in: -half...half), y: -half + CGFloat.random(in: 0...200))
+        case 1: pos = CGPoint(x: CGFloat.random(in: -half...half), y: half - CGFloat.random(in: 0...200))
+        case 2: pos = CGPoint(x: -half + CGFloat.random(in: 0...200), y: CGFloat.random(in: -half...half))
+        default: pos = CGPoint(x: half - CGFloat.random(in: 0...200), y: CGFloat.random(in: -half...half))
+        }
+        let type = pickStarType()
+        let volatile = (type == .golden || type == .ancient) && Double.random(in: 0...1) < EnhancementConfig.volatileChance
+        let star = StarNode(type: type, isVolatile: volatile)
+        star.position = pos
+        star.alpha = 0
+        worldNode.addChild(star)
+        starNodes.append(star)
+        star.run(SKAction.fadeIn(withDuration: 0.8))
+    }
+
+    private func addAsteroids() {
+        for _ in 0..<region.asteroidCount {
+            let size = CGFloat.random(in: 24...64)
+            let node = AsteroidNode(size: size, speedMultiplier: region.asteroidSpeedMultiplier)
+            node.position = CGPoint(
+                x: CGFloat.random(in: -worldSize/2...worldSize/2),
+                y: CGFloat.random(in: -worldSize/2...worldSize/2)
+            )
+            // Keep spawn away from origin.
+            if hypot(node.position.x, node.position.y) < 220 {
+                node.position = CGPoint(x: node.position.x + 400, y: node.position.y + 300)
+            }
+            worldNode.addChild(node)
+            asteroidNodes.append(node)
+        }
+    }
+
+    private func addVortexes() {
+        for _ in 0..<region.vortexCount {
+            let v = GravityVortexNode(strength: region.vortexStrength)
+            v.position = CGPoint(
+                x: CGFloat.random(in: -worldSize/3...worldSize/3),
+                y: CGFloat.random(in: -worldSize/3...worldSize/3)
+            )
+            if hypot(v.position.x, v.position.y) < 300 {
+                v.position.x += 600
+            }
+            worldNode.addChild(v)
+            vortexes.append(v)
         }
     }
 
@@ -428,9 +517,34 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard poi.isCompleted else { return }
         if gameState.selectedPOIID == poi.id { gameState.selectedPOIID = nil }
         gameState.nearbyPOIID = nil
+        // Feature C: storm chain progresses in stormOrder.
+        if poi.isStorm {
+            GhostSignalDecay.shared.stopTracking(poi.id)
+            if poi.stormOrder == gameState.stormChainIndex {
+                gameState.stormChainIndex += 1
+                gameState.stormPOIIDs.removeAll { $0 == poi.id }
+                AudioManager.shared.playEffect("signal")
+                if let pattern = ConstellationMemory.shared.checkStormChain(
+                    chainIndex: gameState.stormChainIndex,
+                    needed: EnhancementConfig.stormPOICount
+                ) {
+                    AudioManager.shared.playEffect("constellation")
+                    gameState.stormChainIndex = 0
+                    _ = pattern
+                }
+            } else {
+                // Out of order still counts, but no chain bonus.
+                gameState.stormPOIIDs.removeAll { $0 == poi.id }
+            }
+            if let node = poiNodes[poi.id] {
+                node.removeFromParent()
+                poiNodes.removeValue(forKey: poi.id)
+            }
+        } else {
+            AudioManager.shared.playEffect("signal")
+        }
         scannerSystem.scan(playerPosition: playerShip.position)
         NotificationCenter.default.post(name: .poiCompleted, object: poi)
-        AudioManager.shared.playEffect("signal")
     }
 
     private func contact(at point: CGPoint) -> POI? {
@@ -537,12 +651,13 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     override func update(_ currentTime: TimeInterval) {
         super.update(currentTime)
         guard isReady else { return }
-        
+
         let deltaTime = min(max(currentTime - (lastUpdateTime ?? currentTime), 0), 0.05)
         lastUpdateTime = currentTime
+        sceneTime = currentTime
+        playerShip.currentTime = currentTime
         scannerSystem.update(deltaTime: deltaTime, playerPosition: playerShip.position)
 
-        // SwiftUI drag coordinates point down, while SpriteKit world coordinates point up.
         if gameState.joystickDirection != .zero {
             playerShip.moveToward(CGPoint(
                 x: playerShip.position.x + gameState.joystickDirection.dx * 100,
@@ -553,6 +668,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             playerShip.stop()
             wasUsingJoystick = false
         }
+        applyVortexForces(deltaTime: deltaTime)
         playerShip.update(deltaTime: deltaTime)
         updateCamera()
         updateParallax()
@@ -562,8 +678,18 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             statusUpdateTimer = 0
             updateNearbyContact()
         }
+        // Feature tuning ticks.
+        gameState.tickCombo(deltaTime: deltaTime)
+        gameState.decayNoise(EnhancementConfig.noiseDecayPerSecond * deltaTime)
+        RiskAccrualSystem.shared.decay(deltaTime: deltaTime)
+        updateVolatiles(deltaTime: deltaTime)
+        updateStarRespawn(deltaTime: deltaTime)
+        updateStalker(deltaTime: deltaTime)
+        updateStorm(deltaTime: deltaTime)
+        updateRiskOverlay()
         drainEnergy()
         updatePOIVisibility()
+        checkLoreDiscovery()
         checkGameConditions()
     }
     
@@ -670,45 +796,272 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private func handleStarCollection(contact: SKPhysicsContact) {
         let starNode: StarNode
         if contact.bodyA.categoryBitMask == PhysicsCategory.star {
-            starNode = contact.bodyA.node as! StarNode
+            guard let n = contact.bodyA.node as? StarNode else { return }
+            starNode = n
         } else {
-            starNode = contact.bodyB.node as! StarNode
+            guard let n = contact.bodyB.node as? StarNode else { return }
+            starNode = n
         }
         let starType = starNode.starType
-        starNode.physicsBody = nil // A lingering collection animation must not award the star twice.
+        let wasVolatile = starNode.isVolatile
+        starNode.physicsBody = nil
         starNode.collect()
-        gameState.collectStar(starType)
-        AudioManager.shared.playEffect(starType.collectSound)
+        starNodes.removeAll { $0 === starNode }
+        let award = gameState.collectStar(starType, isVolatile: wasVolatile)
+        if gameState.comboMultiplier >= 5 {
+            AudioManager.shared.playEffect("combo5")
+            shakeCamera(intensity: 6)
+        } else if gameState.comboMultiplier == 3 {
+            AudioManager.shared.playEffect("combo3")
+        } else if gameState.comboMultiplier == 2 {
+            AudioManager.shared.playEffect("combo2")
+        } else if wasVolatile {
+            AudioManager.shared.playEffect("volatile")
+        } else {
+            AudioManager.shared.playEffect(starType.collectSound)
+        }
+        _ = award
         playerShip.showCollectionRadius()
+        VisualGhostTrails.shared.recordTrail(at: starNode.position, in: worldNode)
         onStarCollected?(starType)
         NotificationCenter.default.post(name: .starCollected, object: starType)
+        NotificationCenter.default.post(name: .comboChanged, object: nil)
     }
-    
+
     private func handleAsteroidCollision(contact: SKPhysicsContact) {
         let asteroidNode: AsteroidNode
         if contact.bodyA.categoryBitMask == PhysicsCategory.asteroid {
-            asteroidNode = contact.bodyA.node as! AsteroidNode
+            guard let n = contact.bodyA.node as? AsteroidNode else { return }
+            asteroidNode = n
         } else {
-            asteroidNode = contact.bodyB.node as! AsteroidNode
+            guard let n = contact.bodyB.node as? AsteroidNode else { return }
+            asteroidNode = n
         }
-        let damage = Double(asteroidNode.size.width) * 0.5
-        gameState.takeDamage(damage / 100.0)
+        if playerShip.isInvulnerable(at: sceneTime) || playerShip.isPhased(at: sceneTime) { return }
+        let damage = Double(asteroidNode.size.width) * 0.5 / 100.0
+        gameState.takeDamage(damage)
+        gameState.addNoise(0.12)
         playerShip.flash()
         playerShip.showShield()
+        playerShip.grantInvulnerability(duration: 1.0, now: sceneTime)
         asteroidNode.onHit()
         AudioManager.shared.playEffect("damage")
+        shakeCamera(intensity: 4)
+    }
+
+    // MARK: - Feature A helpers
+    private func updateVolatiles(deltaTime: Double) {
+        var expired: [StarNode] = []
+        for star in starNodes where star.isVolatile {
+            if star.tickFuse(deltaTime: deltaTime) { expired.append(star) }
+        }
+        for star in expired {
+            starNodes.removeAll { $0 === star }
+            AudioManager.shared.playEffect("volatileExpire")
+        }
+    }
+
+    private func updateStarRespawn(deltaTime: Double) {
+        starRespawnTimer += deltaTime
+        if starRespawnTimer >= EnhancementConfig.starRespawnInterval {
+            starRespawnTimer = 0
+            starNodes.removeAll { $0.parent == nil }
+            spawnRespawnStar()
+        }
+    }
+
+    private func shakeCamera(intensity: CGFloat) {
+        guard let cam = cameraNode else { return }
+        let shake = SKAction.sequence([
+            SKAction.moveBy(x: intensity, y: 0, duration: 0.05),
+            SKAction.moveBy(x: -intensity * 2, y: 0, duration: 0.05),
+            SKAction.moveBy(x: intensity, y: 0, duration: 0.05)
+        ])
+        cam.run(shake)
+    }
+
+    // MARK: - Feature B: vortex + stalker
+    private func applyVortexForces(deltaTime: Double) {
+        let phased = playerShip.isPhased(at: sceneTime)
+        for v in vortexes {
+            let force = v.pullVector(for: playerShip.position, phased: phased)
+            if force.dx != 0 || force.dy != 0 {
+                playerShip.applyExternalForce(CGVector(
+                    dx: force.dx * CGFloat(deltaTime) * 60 * 0.016,
+                    dy: force.dy * CGFloat(deltaTime) * 60 * 0.016
+                ))
+            }
+            let dist = hypot(v.position.x - playerShip.position.x, v.position.y - playerShip.position.y)
+            if dist < v.killRadius {
+                if !playerShip.isInvulnerable(at: sceneTime) && !phased {
+                    gameState.takeDamage(0.15)
+                    playerShip.flash()
+                    playerShip.showShield()
+                    playerShip.grantInvulnerability(duration: 1.2, now: sceneTime)
+                    AudioManager.shared.playEffect("damage")
+                }
+            } else if v.isInRim(playerShip.position) {
+                let speed = hypot(playerShip.physicsBody?.velocity.dx ?? 0, playerShip.physicsBody?.velocity.dy ?? 0)
+                if speed > 160 && sceneTime - lastSlingshotAt > 3.0 {
+                    lastSlingshotAt = sceneTime
+                    let dx = playerShip.position.x - v.position.x
+                    let dy = playerShip.position.y - v.position.y
+                    let d = max(1, hypot(dx, dy))
+                    playerShip.slingshotBoost(
+                        direction: CGVector(dx: dx / d, dy: dy / d),
+                        power: 120
+                    )
+                    gameState.starEnergy += EnhancementConfig.vortexSlingshotBonus
+                    gameState.addNoise(0.05)
+                    AudioManager.shared.playEffect("slingshot")
+                    NotificationCenter.default.post(name: .starCollected, object: StarType.small)
+                }
+            }
+        }
+    }
+
+    private func updateStalker(deltaTime: Double) {
+        let shouldHunt = gameState.noiseLevel >= EnhancementConfig.stalkerNoiseThreshold
+        if shouldHunt && stalker == nil {
+            let s = VoidStalkerNode()
+            // Spawn at screen edge away from player.
+            let angle = CGFloat.random(in: 0...CGFloat.pi * 2)
+            s.position = CGPoint(
+                x: playerShip.position.x + cos(angle) * 600,
+                y: playerShip.position.y + sin(angle) * 600
+            )
+            s.state = .hunting
+            worldNode.addChild(s)
+            stalker = s
+            gameState.stalkerActive = true
+            AudioManager.shared.playEffect("stalker")
+            NotificationCenter.default.post(name: .stalkerChanged, object: nil)
+        } else if !shouldHunt && stalker != nil && gameState.noiseLevel <= EnhancementConfig.stalkerDespawnNoise {
+            stalker?.removeFromParent()
+            stalker = nil
+            gameState.stalkerActive = false
+            gameState.stalkerDistance = 9999
+            NotificationCenter.default.post(name: .stalkerChanged, object: nil)
+            return
+        }
+        guard let s = stalker else { return }
+        let dist = s.update(
+            deltaTime: CGFloat(deltaTime),
+            playerPos: playerShip.position,
+            aggression: region.stalkerAggression
+        )
+        gameState.stalkerDistance = dist
+        if dist < s.touchRadius + 18 {
+            if !playerShip.isInvulnerable(at: sceneTime) && !playerShip.isPhased(at: sceneTime) {
+                gameState.takeDamage(EnhancementConfig.stalkerDamage)
+                gameState.noiseLevel = 0.3
+                playerShip.flash()
+                playerShip.showShield()
+                playerShip.grantInvulnerability(duration: 1.5, now: sceneTime)
+                AudioManager.shared.playEffect("damage")
+                shakeCamera(intensity: 8)
+            }
+        }
+    }
+
+    // MARK: - Feature C: storms
+    private func updateStorm(deltaTime: Double) {
+        let wasActive = gameState.stormActive
+        gameState.tickStorm(deltaTime: deltaTime)
+        if gameState.stormActive && !wasActive {
+            startStorm()
+        } else if !gameState.stormActive && wasActive {
+            endStorm(expired: true)
+        }
+        if gameState.stormActive {
+            let ids = gameState.stormPOIIDs
+            let expired = GhostSignalDecay.shared.updateStormPOIs(ids: ids, fuse: EnhancementConfig.stormDuration)
+            if !expired.isEmpty {
+                POIManager.shared.removePOIs(ids: expired)
+                for id in expired {
+                    if let node = poiNodes[id] {
+                        node.removeFromParent()
+                        poiNodes.removeValue(forKey: id)
+                    }
+                }
+                gameState.stormPOIIDs.removeAll { expired.contains($0) }
+                scannerSystem.scan(playerPosition: playerShip.position)
+            }
+        }
+    }
+
+    private func startStorm() {
+        let pois = POIManager.shared.spawnStormPOIs(
+            count: EnhancementConfig.stormPOICount,
+            around: playerShip.position,
+            radius: scannerSystem.getScanRange()
+        )
+        gameState.stormPOIIDs = pois.map { $0.id }
+        gameState.stormChainIndex = 0
+        for poi in pois {
+            let node = createPOINode(for: poi)
+            node.position = poi.position
+            // Storm tint.
+            let ping = SKShapeNode(circleOfRadius: 30)
+            ping.strokeColor = SKColor(red: 1.0, green: 0.4, blue: 0.9, alpha: 0.8)
+            ping.lineWidth = 2
+            ping.fillColor = .clear
+            node.addChild(ping)
+            ping.run(SKAction.repeatForever(SKAction.sequence([
+                SKAction.scale(to: 1.3, duration: 0.7),
+                SKAction.scale(to: 1.0, duration: 0.7)
+            ])))
+            worldNode.addChild(node)
+            poiNodes[poi.id] = node
+        }
+        AudioManager.shared.playEffect("storm")
+        NotificationCenter.default.post(name: .stormChanged, object: nil)
+        scannerSystem.scan(playerPosition: playerShip.position)
+    }
+
+    private func endStorm(expired: Bool) {
+        let remaining = gameState.stormPOIIDs
+        if !remaining.isEmpty {
+            POIManager.shared.removePOIs(ids: remaining)
+            for id in remaining {
+                poiNodes[id]?.removeFromParent()
+                poiNodes.removeValue(forKey: id)
+            }
+        }
+        gameState.stormPOIIDs = []
+        gameState.stormChainIndex = 0
+        NotificationCenter.default.post(name: .stormChanged, object: nil)
+    }
+
+    private func updateRiskOverlay() {
+        riskOverlay?.removeFromParent()
+        riskOverlay = nil
+        let risk = gameState.riskLevel
+        guard risk > 0.05 else { return }
+        let overlay = VisualDistortionSystem.shared.makeOverlay(size: size, risk: risk)
+        overlay.position = cameraNode.position
+        overlay.alpha = min(1.0, risk)
+        addChild(overlay)
+        riskOverlay = overlay
     }
     
     func travelToRegion(_ newRegion: Region) {
         region = newRegion
-        
-        // Clear existing POIs
         for (_, node) in poiNodes {
             node.removeFromParent()
         }
         poiNodes.removeAll()
         POIManager.shared.clear()
-        
+        starNodes.removeAll()
+        asteroidNodes.removeAll()
+        vortexes.forEach { $0.removeFromParent() }
+        vortexes.removeAll()
+        stalker?.removeFromParent()
+        stalker = nil
+        riskOverlay?.removeFromParent()
+        riskOverlay = nil
+        starRespawnTimer = 0
+        VisualGhostTrails.shared.clear()
         worldNode.removeAllChildren()
         backgroundColor = SKColor(red: 0.02, green: 0.02, blue: 0.08, alpha: 1.0)
         setupWorld()

@@ -1,57 +1,62 @@
 import Foundation
 
 /// Centralized configuration for all enhanced gameplay features.
-/// Allows fine-tuning of game feel without code changes.
 struct EnhancementConfig {
-    
-    // MARK: - Signal Echo Risk Accumulation
-    
-    /// How much risk accumulates per POI interaction (0 = no accumulation)
-    static let riskPerDiscovery: Double = 0.25
-    
-    /// Maximum risk before penalties begin (as percentage of max)
+    // MARK: - Signal Echo Risk
+    static let riskPerDiscovery: Double = 0.12
     static let riskThreshold: Double = 0.75
-    
-    /// Risk penalty multiplier after exceeding threshold
     static let riskOverageMultiplier: Double = 1.5
-    
-    // MARK: - Ghost Signal POI Decay
-    
-    /// Time in seconds before undiscovered POIs begin fading (0 = instant decay)
+    static let riskDecayPerSecond: Double = 0.01
+
+    // MARK: - Ghost Signal Decay
     static let ghostDecayStartTime: TimeInterval = 300.0
-    
-    /// Total time for complete POI fadeout after decay start time
     static let ghostDecayDuration: TimeInterval = 120.0
-    
+
     // MARK: - Memory Anchors
-    
-    /// How many safe regions where players can save memory anchors (0 to disable)
     static let maxMemoryAnchorRegions: Int = 3
-    
+
     // MARK: - Visual Features
-    
-    /// Enable ghost trails (faint outlines of explored POIs)
     static var enableGhostTrails: Bool = true
-    
-    /// Ghost trail duration in seconds
     static let ghostTrailDuration: TimeInterval = 30.0
-    
+
     // MARK: - Constellation Memory
-    
-    /// Minimum stars collected to begin tracking constellations
-    static let constellationThreshold: Int = 25
-    
-    /// Stars required per constellation pattern
+    static let constellationThreshold: Int = 8
     static let constellationPointsRequired: Int = 6
-    
-    // MARK: - Sound Effects
-    
-    /// Enable dynamic ambient layering (safety sound vs danger sound)
+    static let constellationRiskVent: Double = 0.3
+
+    // MARK: - Sound / UI
     static var enableDynamicAmbience: Bool = true
-    
-    // MARK: - UI Feedback
-    
-    /// Show resource collection numbers on screen ("+3 Fragments")
     static var enableFloatingText: Bool = true
-    
+
+    // MARK: - Feature A: Combo + Volatiles
+    static let comboWindow: Double = 4.0
+    static let volatileChance: Double = 0.12
+    static let volatileFuse: Double = 10.0
+    static let volatileBonusMultiplier: Double = 2.0
+    static let starRespawnInterval: Double = 2.0
+
+    static func multiplier(forCombo count: Int) -> Int {
+        switch count {
+        case 0...1: return 1
+        case 2...3: return 2
+        case 4...5: return 3
+        default: return 5
+        }
+    }
+
+    // MARK: - Feature B: Stalker + Vortex
+    static let noiseDecayPerSecond: Double = 0.03
+    static let stalkerNoiseThreshold: Double = 0.55
+    static let stalkerBaseSpeed: CGFloat = 170
+    static let stalkerHuntSpeed: CGFloat = 260
+    static let stalkerDamage: Double = 0.25
+    static let stalkerDespawnNoise: Double = 0.15
+    static let vortexSlingshotBonus: Int = 10
+
+    // MARK: - Feature C: Storms
+    static let stormInterval: Double = 110.0
+    static let stormInitialDelay: Double = 45.0
+    static let stormDuration: Double = 30.0
+    static let stormPOICount: Int = 4
+    static let stormScanBonus: CGFloat = 250.0
 }

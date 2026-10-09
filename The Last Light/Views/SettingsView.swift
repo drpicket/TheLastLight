@@ -133,6 +133,15 @@ struct SettingsView: View {
                 gameState.completedPOIs = []
                 gameState.selectedPOIID = nil
                 gameState.nearbyPOIID = nil
+                gameState.currentRisk = 0
+                gameState.resetCombo()
+                gameState.noiseLevel = 0
+                gameState.stalkerActive = false
+                gameState.stormActive = false
+                gameState.stormPOIIDs = []
+                gameState.stormChainIndex = 0
+                gameState.completedConstellations = []
+                gameState.memoryAnchors = []
                 POIManager.shared.clear()
                 gameState.hasStartedGame = false
                 gameState.currentView = .mainMenu

@@ -148,9 +148,54 @@ class POIManager {
     func getPOI(by id: String) -> POI? {
         return pois.first { $0.id == id }
     }
+
+    // MARK: - Feature C: Signal Storms
+    @discardableResult
+    func spawnStormPOIs(count: Int, around center: CGPoint, radius: CGFloat) -> [POI] {
+        var created: [POI] = []
+        for i in 0..<count {
+            let angle = Double(i) / Double(max(1, count)) * Double.pi * 2 + Double.random(in: 0...0.5)
+            let dist = CGFloat.random(in: radius * 0.3...radius * 0.8)
+            let pos = CGPoint(
+                x: center.x + CGFloat(cos(angle)) * dist,
+                y: center.y + CGFloat(sin(angle)) * dist
+            )
+            let poi = POI(
+                id: "storm_\(UUID().uuidString.prefix(8))_\(i)",
+                type: i % 2 == 0 ? .unknownSignal : .anomaly,
+                position: pos,
+                isDiscovered: true,
+                discoveryHint: "Storm signal \(i + 1)/\(count) — reach it before it fades!",
+                signalStrength: 1.0,
+                rewardResources: [.signal: Int.random(in: 12...22), .energy: Int.random(in: 8...18)]
+            )
+            poi.isStorm = true
+            poi.stormOrder = i
+            poi.stormFuse = EnhancementConfig.stormDuration
+            pois.append(poi)
+            gameState.discoveredPOIs.insert(poi.id)
+            GhostSignalDecay.shared.startTracking(poi)
+            created.append(poi)
+        }
+        return created
+    }
+
+    func removePOIs(ids: [String]) {
+        pois.removeAll { ids.contains($0.id) }
+        for id in ids {
+            GhostSignalDecay.shared.stopTracking(id)
+            gameState.discoveredPOIs.remove(id)
+            gameState.completedPOIs.remove(id)
+        }
+    }
+
+    func stormPOIs() -> [POI] {
+        pois.filter { $0.isStorm && !$0.isCompleted }.sorted { $0.stormOrder < $1.stormOrder }
+    }
     
     /// Clear all POIs
     func clear() {
         pois.removeAll()
+        GhostSignalDecay.shared.clear()
     }
 }

@@ -135,6 +135,7 @@ struct ArchivesView: View {
 /// The journal gives context to evidence already encountered in flight.
 struct InvestigationSummary: View {
     let entries: [LoreEntry]
+    @ObservedObject var gameState = GameState.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -156,6 +157,28 @@ struct InvestigationSummary: View {
             Text("Evidence recovered: \(entries.count)/\(LoreSystem.allEntries.count)")
                 .font(.system(size: 11, design: .rounded))
                 .foregroundColor(.white.opacity(0.5))
+            // Feature C: constellation codex.
+            Text("CONSTELLATIONS · \(gameState.completedConstellations.count)/\(ConstellationPattern.allCases.count)")
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundColor(.purple)
+            ForEach(ConstellationPattern.allCases, id: \.rawValue) { pattern in
+                HStack(spacing: 6) {
+                    Image(systemName: gameState.completedConstellations.contains(pattern.rawValue) ? "star.fill" : "star")
+                        .foregroundColor(gameState.completedConstellations.contains(pattern.rawValue) ? .yellow : .gray)
+                    Text(pattern.rawValue)
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundColor(.white.opacity(0.8))
+                    Spacer()
+                    Text("+\(pattern.rewardSignal) sig")
+                        .font(.system(size: 10, design: .rounded))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+            }
+            if gameState.bestCombo > 0 {
+                Text("BEST COMBO \(gameState.bestCombo) · VOLATILES \(gameState.totalVolatilesCollected)")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundColor(.orange.opacity(0.85))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)

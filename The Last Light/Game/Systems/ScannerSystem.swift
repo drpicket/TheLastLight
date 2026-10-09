@@ -35,7 +35,7 @@ class ScannerSystem {
         guard isScanning else { return }
         
         scanTimer += deltaTime
-        if scanTimer >= scanInterval {
+        if scanTimer >= currentInterval() {
             scanTimer = 0
             performScan(playerPosition: playerPosition)
         }
@@ -70,8 +70,14 @@ class ScannerSystem {
         // Pulse Scanner upgrade increases range
         let scannerLevel = gameState.upgradeLevels[.scanner] ?? 0
         range += CGFloat(scannerLevel) * 100.0
+        if gameState.stormActive { range += EnhancementConfig.stormScanBonus }
         
         return range
+    }
+
+    /// Storms sweep faster.
+    func currentInterval() -> TimeInterval {
+        gameState.stormActive ? 1.5 : scanInterval
     }
     
     /// Get the last scan results
