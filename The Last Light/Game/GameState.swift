@@ -141,6 +141,8 @@ class GameState: ObservableObject {
         stormNextIn = EnhancementConfig.stormInitialDelay
         stormPOIIDs = []
         stormChainIndex = 0
+        directiveIndex = 0
+        directiveComplete = false
         // Keep lifetime records across runs? Reset per journey except best.
         POIManager.shared.clear()
         DiscoveryManager.shared.clear()
@@ -520,6 +522,8 @@ class GameState: ObservableObject {
             totalVolatilesCollected = data.totalVolatilesCollected ?? 0
             completedConstellations = data.completedConstellations ?? []
             memoryAnchors = data.memoryAnchors ?? []
+            directiveIndex = data.directiveIndex ?? 0
+            directiveComplete = data.directiveComplete ?? false
         }
     }
 }
