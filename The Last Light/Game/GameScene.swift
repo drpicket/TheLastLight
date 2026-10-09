@@ -720,6 +720,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         updateStalker(deltaTime: deltaTime)
         updateStorm(deltaTime: deltaTime)
         updateRiskOverlay()
+        updateEnergyVignette(deltaTime: deltaTime)
         pollDirectives(deltaTime: deltaTime)
         drainEnergy()
         updatePOIVisibility()
@@ -1146,6 +1147,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
 
     private var riskOverlayTimer: Double = 0
     private var riskOverlayBuiltFor: Double = -1
+    private var energyVignette: SKShapeNode?
+    private var energyVignettePhase: Double = 0
 
     private func updateRiskOverlay() {
         // Throttled: rebuilding a shape node 60x/sec shimmers and wastes fill-rate.
@@ -1178,6 +1181,29 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         addChild(overlay)
         riskOverlay = overlay
     }
+
+    /// Low-battery closing-in darkness: pulses faster as energy drains.
+    private func updateEnergyVignette(deltaTime: Double) {
+        let e = gameState.shipEnergy
+        guard e < 0.3 else {
+            energyVignette?.removeFromParent()
+            energyVignette = nil
+            return
+        }
+        energyVignettePhase += deltaTime * (2.0 + (0.3 - e) * 20.0)
+        let pulse = 0.25 + 0.2 * sin(energyVignettePhase * 2.0 * .pi / 2.0)
+        if energyVignette == nil {
+            let v = SKShapeNode(rectOf: size)
+            v.fillColor = SKColor(red: 0.6, green: 0.0, blue: 0.0, alpha: 1.0)
+            v.strokeColor = .clear
+            v.zPosition = 91
+            v.name = "energyVignette"
+            addChild(v)
+            energyVignette = v
+        }
+        energyVignette?.position = cameraNode.position
+        energyVignette?.alpha = CGFloat(pulse * (0.3 - e) / 0.3)
+    }
     
     func travelToRegion(_ newRegion: Region) {
         region = newRegion
@@ -1196,6 +1222,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         riskOverlay = nil
         riskOverlayBuiltFor = -1
         riskOverlayTimer = 0
+        energyVignette?.removeFromParent()
+        energyVignette = nil
         starRespawnTimer = 0
         VisualGhostTrails.shared.clear()
         worldNode.removeAllChildren()
