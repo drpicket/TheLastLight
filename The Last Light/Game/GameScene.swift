@@ -591,6 +591,15 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
 
     private func updateWaypoint() {
+        // During storms with no manual track, auto-guide to the next chain link.
+        if gameState.stormActive {
+            let trackedValid = gameState.selectedPOIID
+                .flatMap { POIManager.shared.getPOI(by: $0) }
+                .map { !$0.isCompleted } ?? false
+            if !trackedValid, let next = POIManager.shared.stormPOIs().first {
+                gameState.selectedPOIID = next.id
+            }
+        }
         guard let label = waypointLabel, let id = gameState.selectedPOIID,
               let poi = POIManager.shared.getPOI(by: id), !poi.isCompleted else {
             waypointLabel?.isHidden = true
