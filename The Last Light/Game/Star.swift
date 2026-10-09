@@ -245,6 +245,8 @@ class StarNode: SKSpriteNode {
         if let ring = volatileRing {
             let frac = max(0, fuseLeft / EnhancementConfig.volatileFuse)
             ring.alpha = 0.4 + 0.6 * (1.0 - frac)
+            // Urgency readout: pulse quickens as the fuse burns (no scale fight).
+            ring.speed = CGFloat(1.0 + (1.0 - frac) * 3.0)
         }
         if fuseLeft <= 0 {
             expire()
