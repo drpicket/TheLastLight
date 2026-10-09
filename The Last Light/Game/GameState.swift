@@ -237,6 +237,8 @@ class GameState: ObservableObject {
 
     func tickCombo(deltaTime: Double) {
         guard comboCount > 0 else { return }
+        // Reading lore must never kill a run: freeze the fuse mid-discovery.
+        guard activeDiscovery == nil else { return }
         comboTimeLeft -= deltaTime
         if comboTimeLeft <= 0 {
             resetCombo()
