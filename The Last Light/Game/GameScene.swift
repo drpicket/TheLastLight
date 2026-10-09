@@ -1024,6 +1024,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                     )
                     gameState.starEnergy += EnhancementConfig.vortexSlingshotBonus
                     gameState.addNoise(0.05)
+                    gameState.advanceDirectiveIfNeeded(event: .slingshot)
                     AudioManager.shared.playEffect("slingshot")
                     NotificationCenter.default.post(name: .starCollected, object: StarType.small)
                 }
