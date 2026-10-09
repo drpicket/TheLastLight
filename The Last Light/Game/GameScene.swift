@@ -1135,11 +1135,34 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         NotificationCenter.default.post(name: .stormChanged, object: nil)
     }
 
+    private var riskOverlayTimer: Double = 0
+    private var riskOverlayBuiltFor: Double = -1
+
     private func updateRiskOverlay() {
-        riskOverlay?.removeFromParent()
-        riskOverlay = nil
+        // Throttled: rebuilding a shape node 60x/sec shimmers and wastes fill-rate.
+        riskOverlayTimer += 1.0 / 60.0
         let risk = gameState.riskLevel
-        guard risk > 0.05 else { return }
+        guard risk > 0.05 else {
+            riskOverlay?.removeFromParent()
+            riskOverlay = nil
+            riskOverlayBuiltFor = -1
+            return
+        }
+        if let overlay = riskOverlay {
+            overlay.position = cameraNode.position
+            overlay.alpha = min(1.0, risk)
+            // Rebuild only on significant band change so color tracks risk.
+            if abs(risk - riskOverlayBuiltFor) > 0.15 && riskOverlayTimer >= 0.25 {
+                riskOverlayTimer = 0
+                overlay.removeFromParent()
+                riskOverlay = nil
+            } else {
+                return
+            }
+        }
+        guard riskOverlayTimer >= 0.25 else { return }
+        riskOverlayTimer = 0
+        riskOverlayBuiltFor = risk
         let overlay = VisualDistortionSystem.shared.makeOverlay(size: size, risk: risk)
         overlay.position = cameraNode.position
         overlay.alpha = min(1.0, risk)
@@ -1162,6 +1185,8 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         stalker = nil
         riskOverlay?.removeFromParent()
         riskOverlay = nil
+        riskOverlayBuiltFor = -1
+        riskOverlayTimer = 0
         starRespawnTimer = 0
         VisualGhostTrails.shared.clear()
         worldNode.removeAllChildren()
