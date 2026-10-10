@@ -64,6 +64,8 @@ class GameState: ObservableObject {
     @Published var bestCombo: Int = 0
     @Published var totalVolatilesCollected: Int = 0
     @Published var lastComboAward: Int = 0
+    @Published var runScore: Int = 0
+    @Published var highScore: Int = 0
 
     // MARK: - Feature B: Noise / Stalker pressure
     @Published var noiseLevel: Double = 0.0
@@ -120,6 +122,7 @@ class GameState: ObservableObject {
         shipShield = 1.0
         totalStarsCollected = 0
         regionStarsCollected = 0
+        runScore = 0
         hasStartedGame = true
         isPlaying = true
         currentView = .game
@@ -209,6 +212,8 @@ class GameState: ObservableObject {
         }
         lastComboAward = award
         starEnergy += award
+        runScore += award
+        if runScore > highScore { highScore = runScore }
         totalStarsCollected += 1
         regionStarsCollected += 1
         shipEnergy = min(1.0, shipEnergy + Double(starType.energyValue) / 100.0)
@@ -233,6 +238,12 @@ class GameState: ObservableObject {
         checkRegionUnlock()
         saveGame()
         return award
+    }
+
+    /// Bonus score from non-star sources (slingshots, constellation payouts).
+    func addScore(_ points: Int) {
+        runScore += points
+        if runScore > highScore { highScore = runScore }
     }
 
     func tickCombo(deltaTime: Double) {
@@ -526,6 +537,7 @@ class GameState: ObservableObject {
             memoryAnchors = data.memoryAnchors ?? []
             directiveIndex = data.directiveIndex ?? 0
             directiveComplete = data.directiveComplete ?? false
+            highScore = data.highScore ?? 0
         }
     }
 }
