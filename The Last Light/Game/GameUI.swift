@@ -57,6 +57,24 @@ struct GameUI: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
 
+                // Run score: always on, the reason to chain stars.
+                ZStack {
+                    Text("SCORE  \(gameState.runScore)")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                    if gameState.highScore > gameState.runScore {
+                        Text("BEST \(gameState.highScore)")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.5))
+                            .offset(y: 14)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.black.opacity(0.4))
+                .cornerRadius(14)
+                .padding(.top, 6)
+
                 // Directive (storyline objective)
                 if !gameState.directiveComplete && gameState.directiveIndex < GameState.directives.count {
                     let step = gameState.currentDirective
