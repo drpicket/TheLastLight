@@ -1092,6 +1092,11 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             endStorm(expired: true)
         }
         if gameState.stormActive {
+            // Fuses burn on game time, frozen while a discovery modal is open.
+            GhostSignalDecay.shared.tickStormFuses(
+                deltaTime: deltaTime,
+                frozen: DiscoveryManager.shared.hasActiveDiscovery()
+            )
             let ids = gameState.stormPOIIDs
             let expired = GhostSignalDecay.shared.updateStormPOIs(ids: ids, fuse: EnhancementConfig.stormDuration)
             if !expired.isEmpty {
