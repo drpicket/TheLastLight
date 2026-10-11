@@ -161,7 +161,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if region.hasAncientStructures {
             addAncientStructures()
         }
-        updateRiskOverlay()
+        updateRiskOverlay(deltaTime: 0)
     }
 
     private func pickStarType() -> StarType {
@@ -719,10 +719,10 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         updateStarRespawn(deltaTime: deltaTime)
         updateStalker(deltaTime: deltaTime)
         updateStorm(deltaTime: deltaTime)
-        updateRiskOverlay()
+        updateRiskOverlay(deltaTime: deltaTime)
         updateEnergyVignette(deltaTime: deltaTime)
         pollDirectives(deltaTime: deltaTime)
-        drainEnergy()
+        drainEnergy(deltaTime: deltaTime)
         updatePOIVisibility()
         checkLoreDiscovery()
         checkGameConditions()
@@ -779,12 +779,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
     }
     
-    private func drainEnergy() {
-        let drain = region.energyDrainRate / 60.0
+    private func drainEnergy(deltaTime: Double) {
+        // energyDrainRate is a per-second rate; scale by real elapsed time so
+        // the battery drains at the same rate on 60Hz and 120Hz displays.
+        let drain = region.energyDrainRate * deltaTime
         gameState.useEnergy(drain)
         // Record last safe spot while powered.
         if gameState.shipEnergy > 0.3 {
-            safePositionTimer += 1.0 / 60.0
+            safePositionTimer += deltaTime
             if safePositionTimer >= 2.0 {
                 safePositionTimer = 0
                 gameState.lastSafePosition = playerShip.position
@@ -797,7 +799,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         }
         if gameState.powerFailureActive {
             // Sluggish dead-ship drift while counting down.
-            gameState.powerFailureCountdown -= 1.0 / 60.0
+            gameState.powerFailureCountdown -= deltaTime
             if gameState.shipEnergy > 0.05 {
                 // Rebooted by collecting a star.
                 gameState.endPowerFailure(rescued: true)
@@ -805,9 +807,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             } else if gameState.powerFailureCountdown <= 0 {
                 rescueStrandedShip()
             }
-        }
-        if gameState.shipEnergy <= 0 && !gameState.powerFailureActive {
-            onEnergyDepleted?()
         }
     }
 
@@ -1161,9 +1160,9 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var energyVignette: SKShapeNode?
     private var energyVignettePhase: Double = 0
 
-    private func updateRiskOverlay() {
-        // Throttled: rebuilding a shape node 60x/sec shimmers and wastes fill-rate.
-        riskOverlayTimer += 1.0 / 60.0
+    private func updateRiskOverlay(deltaTime: Double) {
+        // Throttled: rebuilding a shape node every frame shimmers and wastes fill-rate.
+        riskOverlayTimer += deltaTime
         let risk = gameState.riskLevel
         guard risk > 0.05 else {
             riskOverlay?.removeFromParent()
