@@ -106,7 +106,6 @@ class POI: Identifiable, Codable {
     // Feature C: ephemeral storm signals.
     var isStorm: Bool = false
     var stormOrder: Int = 0
-    var stormFuse: Double = 30.0
     
     init(
         id: String = UUID().uuidString,

@@ -132,26 +132,3 @@ enum UpgradeType: String, Codable, CaseIterable, Identifiable, Hashable {
         }
     }
 }
-
-struct UpgradeSystem {
-    static func level(for type: UpgradeType, gameState: GameState) -> Int {
-        return gameState.upgradeLevels[type] ?? 0
-    }
-    
-    static func canPurchase(_ type: UpgradeType, gameState: GameState) -> Bool {
-        let currentLevel = level(for: type, gameState: gameState)
-        guard currentLevel < type.maxLevel else { return false }
-        let cost = type.cost(forLevel: currentLevel + 1)
-        return gameState.starEnergy >= cost
-    }
-    
-    static func nextCost(for type: UpgradeType, gameState: GameState) -> Int? {
-        let currentLevel = level(for: type, gameState: gameState)
-        guard currentLevel < type.maxLevel else { return nil }
-        return type.cost(forLevel: currentLevel + 1)
-    }
-    
-    static func purchase(_ type: UpgradeType, gameState: GameState) -> Bool {
-        return gameState.purchaseUpgrade(type)
-    }
-}

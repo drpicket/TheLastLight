@@ -241,12 +241,6 @@ class GameState: ObservableObject {
         return award
     }
 
-    /// Bonus score from non-star sources (slingshots, constellation payouts).
-    func addScore(_ points: Int) {
-        runScore += points
-        if runScore > highScore { highScore = runScore }
-    }
-
     func tickCombo(deltaTime: Double) {
         guard comboCount > 0 else { return }
         // Reading lore must never kill a run: freeze the fuse mid-discovery.

@@ -171,7 +171,6 @@ class POIManager {
             )
             poi.isStorm = true
             poi.stormOrder = i
-            poi.stormFuse = EnhancementConfig.stormDuration
             pois.append(poi)
             gameState.discoveredPOIs.insert(poi.id)
             GhostSignalDecay.shared.startTracking(poi)

@@ -25,6 +25,17 @@ struct ArchivesView: View {
         
         return entries.sorted { $0.region.rawValue < $1.region.rawValue }
     }
+
+    /// How much of an entry has been lost to rising risk, 0 (sharp) ... 1 (gone).
+    /// Anchored memories always read as sharp.
+    private func memoryFade(for entry: LoreEntry) -> Double {
+        MemoryFadingSystem.shared.getFadeLevel(for: entry.id, using: gameState.riskLevel)
+    }
+
+    /// Entries currently faded past the readable threshold.
+    private var fadingCount: Int {
+        filteredEntries.reduce(0) { $0 + (memoryFade(for: $1) > 0.3 ? 1 : 0) }
+    }
     
     var body: some View {
         ZStack {
@@ -112,10 +123,18 @@ struct ArchivesView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: 12) {
+                            if fadingCount > 0 {
+                                MemoryDecayBanner(count: fadingCount)
+                            }
+
                             InvestigationSummary(entries: LoreSystem.discoveredEntries(gameState: gameState))
 
                             ForEach(filteredEntries) { entry in
-                                LoreEntryCard(entry: entry) {
+                                LoreEntryCard(
+                                    entry: entry,
+                                    fadeLevel: memoryFade(for: entry),
+                                    isAnchored: gameState.memoryAnchors.contains(entry.id)
+                                ) {
                                     selectedEntry = entry
                                 }
                             }
@@ -129,6 +148,30 @@ struct ArchivesView: View {
         .sheet(item: $selectedEntry) { entry in
             LoreDetailView(entry: entry)
         }
+    }
+}
+
+/// Warning strip shown when flight risk is eroding recovered evidence.
+struct MemoryDecayBanner: View {
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("MEMORY DECAY")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundColor(.orange)
+                Text("\(count) recovered \(count == 1 ? "entry is" : "entries are") fading. Anchor them to preserve the record.")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundColor(.white.opacity(0.8))
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(Color.orange.opacity(0.12))
+        .cornerRadius(12)
     }
 }
 
@@ -209,15 +252,20 @@ struct FilterChip: View {
 /// Card displaying a lore entry summary
 struct LoreEntryCard: View {
     let entry: LoreEntry
+    /// 0 = fully remembered, 1 = lost to static. Anchored entries are always 0.
+    var fadeLevel: Double = 0
+    var isAnchored: Bool = false
     let action: () -> Void
-    
+
+    private var isFading: Bool { fadeLevel > 0.01 }
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 // Category icon
                 Image(systemName: entry.category.icon)
                     .font(.system(size: 20))
-                    .foregroundColor(.cyan)
+                    .foregroundColor(isFading ? .orange : .cyan)
                     .frame(width: 40, height: 40)
                     .background(Color.cyan.opacity(0.1))
                     .cornerRadius(12)
@@ -227,9 +275,21 @@ struct LoreEntryCard: View {
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundColor(.white)
                     
-                    Text(entry.region.displayName)
-                        .font(.system(size: 12, design: .rounded))
-                        .foregroundColor(.white.opacity(0.5))
+                    HStack(spacing: 6) {
+                        Text(entry.region.displayName)
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundColor(.white.opacity(0.5))
+
+                        if isFading {
+                            Label("Fading", systemImage: "waveform.path.ecg")
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundColor(.orange)
+                        } else if isAnchored {
+                            Label("Anchored", systemImage: "pin.fill")
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundColor(.cyan)
+                        }
+                    }
                 }
                 
                 Spacer()
@@ -241,6 +301,44 @@ struct LoreEntryCard: View {
             .padding(16)
             .background(Color.white.opacity(0.05))
             .cornerRadius(12)
+            // Risk erodes recovered evidence: higher risk, more static.
+            .opacity(1.0 - fadeLevel * 0.65)
+        }
+    }
+}
+
+/// Lets a discovered memory be permanently anchored so it stops fading.
+struct MemoryAnchorControl: View {
+    let entry: LoreEntry
+    @ObservedObject var gameState = GameState.shared
+
+    private var fadeLevel: Double {
+        MemoryFadingSystem.shared.getFadeLevel(for: entry.id, using: gameState.riskLevel)
+    }
+    private var isAnchored: Bool { gameState.memoryAnchors.contains(entry.id) }
+
+    var body: some View {
+        if isAnchored {
+            Label("Memory anchored", systemImage: "pin.fill")
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundColor(.cyan)
+        } else if fadeLevel > 0 {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("This memory is fading (\(Int(fadeLevel * 100))% lost)", systemImage: "waveform.path.ecg")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundColor(.orange)
+                Button {
+                    MemoryFadingSystem.shared.anchor(loreId: entry.id)
+                } label: {
+                    Label("Anchor memory", systemImage: "pin")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.cyan)
+                        .cornerRadius(10)
+                }
+            }
         }
     }
 }
@@ -248,6 +346,7 @@ struct LoreEntryCard: View {
 /// Detail view for reading a full lore entry
 struct LoreDetailView: View {
     let entry: LoreEntry
+    @ObservedObject var gameState = GameState.shared
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -289,6 +388,8 @@ struct LoreDetailView: View {
                         Text(entry.region.displayName)
                             .font(.system(size: 14, design: .rounded))
                             .foregroundColor(.cyan)
+                        
+                        MemoryAnchorControl(entry: entry)
                         
                         Divider()
                             .background(Color.white.opacity(0.2))

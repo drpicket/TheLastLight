@@ -21,12 +21,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var riskOverlay: SKShapeNode?
     private var sceneTime: TimeInterval = 0
     private var lastSlingshotAt: TimeInterval = 0
-    var onStarCollected: ((StarType) -> Void)?
-    var onLoreDiscovered: ((LoreEntry) -> Void)?
-    var onRegionUnlocked: ((Region) -> Void)?
-    var onEnergyDepleted: (() -> Void)?
-    var onComboChanged: ((Int, Int) -> Void)?
-    var onStormChanged: ((Bool) -> Void)?
     private var isReady = false
     
     // POI system
@@ -624,7 +618,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     #if os(iOS) || os(tvOS)
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
-        isTouching = true
         let location = touch.location(in: self)
         lastTouchLocation = location
         let worldPoint = convert(location, to: worldNode)
@@ -647,17 +640,14 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        isTouching = false
         playerShip.stop()
     }
     
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        isTouching = false
         playerShip.stop()
     }
     #elseif os(macOS)
     override func mouseDown(with event: NSEvent) {
-        isTouching = true
         lastTouchLocation = event.location(in: self)
         if let camera = cameraNode {
             let worldPoint = convert(lastTouchLocation!, to: worldNode)
@@ -674,7 +664,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     }
     
     override func mouseUp(with event: NSEvent) {
-        isTouching = false
         playerShip.stop()
     }
     #endif
@@ -865,7 +854,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                 }
                 if gameState.regionStarsCollected >= starsNeeded {
                     gameState.discoverLore(entry.id)
-                    onLoreDiscovered?(entry)
+                    NotificationCenter.default.post(name: .loreDiscovered, object: entry)
                     AudioManager.shared.playEffect("lore")
                 }
             }
@@ -877,7 +866,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
             if !gameState.unlockedRegions.contains(region) {
                 if region.isUnlocked(gameState: gameState) {
                     gameState.unlockRegion(region)
-                    onRegionUnlocked?(region)
+                    NotificationCenter.default.post(name: .regionUnlocked, object: region)
                 }
             }
         }
@@ -926,7 +915,6 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         if wasVolatile {
             gameState.evaluateDirectives(event: .volatile)
         }
-        onStarCollected?(starType)
         NotificationCenter.default.post(name: .starCollected, object: starType)
         NotificationCenter.default.post(name: .comboChanged, object: nil)
     }
