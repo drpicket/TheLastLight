@@ -398,81 +398,181 @@ class GameState: ObservableObject {
         if let newest = discoveredLore.sorted().last {
             memoryAnchors.insert(newest)
         }
-        advanceDirectiveIfNeeded(event: .constellation)
+        evaluateDirectives(event: .constellation)
         saveGame()
     }
 
     // MARK: - Directives (storyline)
-    enum DirectiveEvent { case stars, poi(String), stormChain, upgrade, region, volatile, slingshot, constellation }
+    enum DirectiveEvent {
+        /// A contact of the given type was completed.
+        case poi(POIType)
+        case stormChain
+        case volatile
+        case slingshot
+        case constellation
 
+        /// The completed contact's type, or nil when the event is not a contact.
+        var poiType: POIType? {
+            if case .poi(let type) = self { return type }
+            return nil
+        }
+    }
+
+    /// One quest step.
+    ///
+    /// `goal`/`progress` drive the HUD bar. `isComplete` owns the rule for
+    /// advancing, so every step is self-contained: adding a step means adding
+    /// one entry here, with no matching case in any other file.
     struct DirectiveStep {
         let title: String
         let hint: String
+        let goal: Int?
+        let progress: (GameState) -> Int
+        let isComplete: (GameState, DirectiveEvent?) -> Bool
+
+        init(
+            title: String,
+            hint: String,
+            goal: Int? = nil,
+            progress: @escaping (GameState) -> Int = { _ in 0 },
+            isComplete: @escaping (GameState, DirectiveEvent?) -> Bool
+        ) {
+            self.title = title
+            self.hint = hint
+            self.goal = goal
+            self.progress = progress
+            self.isComplete = isComplete
+        }
     }
 
     static let directives: [DirectiveStep] = [
-        DirectiveStep(title: "Follow the starter lights", hint: "Collect 6 stars — chain them for combo"),
-        DirectiveStep(title: "Find Voss's fragment", hint: "Investigate the Stellar Fragment contact"),
-        DirectiveStep(title: "Decode the whisper", hint: "Complete the Unknown Signal contact"),
-        DirectiveStep(title: "Ride the signal storm", hint: "Complete storm signals in order (chain)"),
-        DirectiveStep(title: "Upgrade the Wayfarer", hint: "Buy any ship upgrade with star energy"),
-        DirectiveStep(title: "Leave the Silent Belt", hint: "Collect 50 stars to unlock the Shattered Nebula"),
-        DirectiveStep(title: "Chart the Nebula", hint: "Complete 2 contacts in the Shattered Nebula"),
-        DirectiveStep(title: "Master the light", hint: "Reach a x5 combo, slingshot, or volatile — closes Act 1"),
+        DirectiveStep(
+            title: "Follow the starter lights",
+            hint: "Collect 6 stars — chain them for combo",
+            goal: 6,
+            progress: { min($0.totalStarsCollected, 6) },
+            isComplete: { gs, _ in gs.totalStarsCollected >= 6 }
+        ),
+        DirectiveStep(
+            title: "Find Voss's fragment",
+            hint: "Investigate the Stellar Fragment contact",
+            isComplete: { _, event in event?.poiType == .stellarFragment }
+        ),
+        DirectiveStep(
+            title: "Decode the whisper",
+            hint: "Complete the Unknown Signal contact",
+            isComplete: { _, event in event?.poiType == .unknownSignal }
+        ),
+        DirectiveStep(
+            title: "Ride the signal storm",
+            hint: "Complete storm signals in order (chain)",
+            goal: EnhancementConfig.stormPOICount,
+            progress: { min($0.stormChainIndex, EnhancementConfig.stormPOICount) },
+            isComplete: { gs, event in
+                switch event {
+                case .stormChain?: return true
+                // A completed constellation counts as storm mastery too.
+                default: return !gs.completedConstellations.isEmpty
+                }
+            }
+        ),
+        DirectiveStep(
+            title: "Upgrade the Wayfarer",
+            hint: "Buy any ship upgrade with star energy",
+            isComplete: { gs, _ in !gs.upgradeLevels.isEmpty }
+        ),
+        DirectiveStep(
+            title: "Leave the Silent Belt",
+            hint: "Collect 50 stars to unlock the Shattered Nebula",
+            goal: 50,
+            progress: { min($0.totalStarsCollected, 50) },
+            isComplete: { gs, _ in gs.totalStarsCollected >= 50 }
+        ),
+        DirectiveStep(
+            title: "Chart the Nebula",
+            hint: "Complete 2 contacts in the Shattered Nebula",
+            goal: 2,
+            progress: { min($0.nebulaContactsCompleted, 2) },
+            isComplete: { gs, _ in gs.nebulaContactsCompleted >= 2 }
+        ),
+        DirectiveStep(
+            title: "Master the light",
+            hint: "Reach a x5 combo, slingshot, or volatile — closes Act 1",
+            isComplete: { gs, event in
+                switch event {
+                case .volatile?, .slingshot?, .constellation?: return true
+                default: return gs.comboMultiplier >= 5
+                }
+            }
+        ),
         // Act 2: Shattered Nebula.
-        DirectiveStep(title: "Feed the Nebula", hint: "Collect 25 stars in the Shattered Nebula"),
-        DirectiveStep(title: "Enter the anomaly", hint: "Complete the gravitational anomaly contact"),
-        DirectiveStep(title: "Weather the Nebula storm", hint: "Complete a storm chain or constellation"),
-        DirectiveStep(title: "Push to the Forgotten Orbit", hint: "Collect 150 total stars — closes Act 2"),
+        DirectiveStep(
+            title: "Feed the Nebula",
+            hint: "Collect 25 stars in the Shattered Nebula",
+            goal: 25,
+            progress: { min($0.regionStarsCollected, 25) },
+            isComplete: { gs, _ in gs.regionStarsCollected >= 25 }
+        ),
+        DirectiveStep(
+            title: "Enter the anomaly",
+            hint: "Complete the gravitational anomaly contact",
+            isComplete: { _, event in event?.poiType == .anomaly }
+        ),
+        DirectiveStep(
+            title: "Weather the Nebula storm",
+            hint: "Complete a storm chain or constellation",
+            isComplete: { _, event in
+                switch event {
+                case .stormChain?, .constellation?: return true
+                default: return false
+                }
+            }
+        ),
+        DirectiveStep(
+            title: "Push to the Forgotten Orbit",
+            hint: "Collect 150 total stars — closes Act 2",
+            goal: 150,
+            progress: { min($0.totalStarsCollected, 150) },
+            isComplete: { gs, _ in gs.totalStarsCollected >= 150 }
+        ),
     ]
 
     var currentDirective: DirectiveStep {
         Self.directives[min(directiveIndex, Self.directives.count - 1)]
     }
 
+    /// Contacts completed inside the Shattered Nebula, counted from saved IDs.
+    var nebulaContactsCompleted: Int {
+        completedPOIs.filter { $0.hasPrefix(Region.shatteredNebula.rawValue) }.count
+    }
+
     func directiveProgress() -> (done: Int, total: Int) {
-        switch directiveIndex {
-        case 0: return (min(totalStarsCollected, 6), 6)
-        case 3: return (min(stormChainIndex, EnhancementConfig.stormPOICount), EnhancementConfig.stormPOICount)
-        case 5: return (min(totalStarsCollected, 50), 50)
-        case 8: return (min(regionStarsCollected, 25), 25)
-        case 11: return (min(totalStarsCollected, 150), 150)
-        default: return (directiveComplete ? 1 : 0, 1)
+        let step = currentDirective
+        guard let goal = step.goal, goal > 0 else { return (directiveComplete ? 1 : 0, 1) }
+        return (min(step.progress(self), goal), goal)
+    }
+
+    /// Advances the directive when `event` (or current state) satisfies it.
+    ///
+    /// Called from gameplay events and from a periodic poll, so both
+    /// event-driven and threshold-driven steps resolve through one path.
+    func evaluateDirectives(event: DirectiveEvent? = nil) {
+        guard !directiveComplete, directiveIndex < Self.directives.count else { return }
+        guard currentDirective.isComplete(self, event) else { return }
+        // The final step resolves the act rather than stepping past the end.
+        if directiveIndex == Self.directives.count - 1 {
+            completeDirectiveFinale()
+        } else {
+            advanceDirective()
         }
     }
 
-    func advanceDirectiveIfNeeded(event: DirectiveEvent) {
-        guard !directiveComplete && directiveIndex < Self.directives.count else { return }
-        var advance = false
-        switch (directiveIndex, event) {
-        case (1, .poi(let id)) where id.hasSuffix("_poi_0") || id.hasSuffix("_poi_3"): advance = true
-        case (2, .poi): advance = true
-        case (3, .stormChain): advance = true
-        case (4, .upgrade): advance = true
-        case (6, .poi): advance = true
-        case (7, .volatile): advance = true
-        case (7, .slingshot): advance = true
-        case (7, .constellation): advance = true
-        case (9, .poi(let id)) where id.hasSuffix("_poi_3"): advance = true
-        case (10, .stormChain): advance = true
-        case (10, .constellation): advance = true
-        default: break
-        }
-        // Final step resolves the act: jackpot + completion flag.
-        if directiveIndex == Self.directives.count - 1 {
-            if case .volatile = event { completeDirectiveFinale() }
-            else if case .slingshot = event { completeDirectiveFinale() }
-            else if case .constellation = event { completeDirectiveFinale() }
-            return
-        }
-        // Star/region thresholds checked in GameScene directly.
-        if advance {
-            directiveIndex = min(directiveIndex + 1, Self.directives.count - 1)
-            starEnergy += 15
-            addResource(.energy, amount: 10)
-            saveGame()
-            NotificationCenter.default.post(name: .directiveChanged, object: nil)
-        }
+    private func advanceDirective() {
+        directiveIndex = min(directiveIndex + 1, Self.directives.count - 1)
+        starEnergy += 15
+        addResource(.energy, amount: 10)
+        saveGame()
+        NotificationCenter.default.post(name: .directiveChanged, object: nil)
     }
 
     private func completeDirectiveFinale() {
@@ -482,23 +582,6 @@ class GameState: ObservableObject {
         ventRisk(0.4)
         saveGame()
         NotificationCenter.default.post(name: .directiveChanged, object: nil)
-    }
-
-    func checkDirectiveThresholds() {        if directiveIndex == 0 && totalStarsCollected >= 6 {
-            directiveIndex = 1
-            NotificationCenter.default.post(name: .directiveChanged, object: nil)
-            saveGame()
-        } else if directiveIndex == 5 && totalStarsCollected >= 50 {
-            directiveIndex = 6
-            NotificationCenter.default.post(name: .directiveChanged, object: nil)
-            saveGame()
-        } else if directiveIndex == 8 && regionStarsCollected >= 25 {
-            directiveIndex = 9
-            NotificationCenter.default.post(name: .directiveChanged, object: nil)
-            saveGame()
-        } else if directiveIndex == 11 && totalStarsCollected >= 150 {
-            completeDirectiveFinale()
-        }
     }
 
     // MARK: - Power failure

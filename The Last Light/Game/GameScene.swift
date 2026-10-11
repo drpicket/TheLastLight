@@ -538,7 +538,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         guard poi.isCompleted else { return }
         if gameState.selectedPOIID == poi.id { gameState.selectedPOIID = nil }
         gameState.nearbyPOIID = nil
-        gameState.advanceDirectiveIfNeeded(event: .poi(poi.id))
+        gameState.evaluateDirectives(event: .poi(poi.type))
         // Feature C: storm chain progresses in stormOrder.
         if poi.isStorm {
             GhostSignalDecay.shared.stopTracking(poi.id)
@@ -814,30 +814,21 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
     private var safePositionTimer: Double = 0
     private var directivePollTimer: Double = 0
 
-    /// Poll-based directive advancement — keeps all quest logic in this file.
+    /// Periodic evaluation so threshold-driven directives (star counts, nebula
+    /// contacts, combo) still advance without a triggering event. Each step
+    /// owns its own rule, so there are no magic indices here.
     private func pollDirectives(deltaTime: Double) {
         directivePollTimer += deltaTime
         guard directivePollTimer >= 0.5 else { return }
         directivePollTimer = 0
-        gameState.checkDirectiveThresholds()
-        let idx = gameState.directiveIndex
-        switch idx {
-        case 4 where !gameState.upgradeLevels.isEmpty:
-            gameState.advanceDirectiveIfNeeded(event: .upgrade)
-        case 6:
-            // 2 contacts completed in the Shattered Nebula.
-            let done = gameState.completedPOIs.filter { $0.hasPrefix(Region.shatteredNebula.rawValue) }.count
-            if done >= 2 || gameState.currentRegion == .shatteredNebula && gameState.completedPOIs.count >= 4 {
-                gameState.advanceDirectiveIfNeeded(event: .poi("poll"))
-            }
-        case 7 where gameState.comboMultiplier >= 5:
-            gameState.advanceDirectiveIfNeeded(event: .volatile)
-        default: break
-        }
-        // Storm chain completions feed directives 3 and 10 regardless of path.
-        if (gameState.directiveIndex == 3 || gameState.directiveIndex == 10)
-            && !gameState.completedConstellations.isEmpty {
-            gameState.advanceDirectiveIfNeeded(event: .stormChain)
+        // Loop so a single poll can carry through several freshly-unlocked steps.
+        var remaining = GameState.directives.count
+        while remaining > 0 {
+            let before = gameState.directiveIndex
+            let wasComplete = gameState.directiveComplete
+            gameState.evaluateDirectives()
+            if gameState.directiveIndex == before && gameState.directiveComplete == wasComplete { break }
+            remaining -= 1
         }
     }
 
@@ -933,7 +924,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         playerShip.showCollectionRadius()
         VisualGhostTrails.shared.recordTrail(at: starNode.position, in: worldNode)
         if wasVolatile {
-            gameState.advanceDirectiveIfNeeded(event: .volatile)
+            gameState.evaluateDirectives(event: .volatile)
         }
         onStarCollected?(starType)
         NotificationCenter.default.post(name: .starCollected, object: starType)
@@ -1027,7 +1018,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
                     )
                     gameState.starEnergy += EnhancementConfig.vortexSlingshotBonus
                     gameState.addNoise(0.05)
-                    gameState.advanceDirectiveIfNeeded(event: .slingshot)
+                    gameState.evaluateDirectives(event: .slingshot)
                     AudioManager.shared.playEffect("slingshot")
                     NotificationCenter.default.post(name: .starCollected, object: StarType.small)
                 }
