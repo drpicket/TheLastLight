@@ -61,9 +61,14 @@ struct GameView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { scene?.resumeScanner() }
+            // Backgrounding can happen mid-debounce; persist before we lose the frame.
+            if phase == .inactive || phase == .background {
+                gameState.flushScheduledSave()
+            }
         }
         .onDisappear {
             gameState.pauseGame()
+            gameState.flushScheduledSave()
             gameState.joystickDirection = .zero
             gameState.selectedPOIID = nil
             gameState.nearbyPOIID = nil

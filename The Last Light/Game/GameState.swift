@@ -160,6 +160,8 @@ class GameState: ObservableObject {
     func returnToMenu() {
         isPlaying = false
         currentView = .mainMenu
+        // Leaving flight must not drop a pending batched save.
+        flushScheduledSave()
     }
 
     // MARK: - Resources
@@ -234,7 +236,8 @@ class GameState: ObservableObject {
 
         checkLoreDiscovery()
         checkRegionUnlock()
-        saveGame()
+        // Stars arrive several times a second during a combo; batch the write.
+        scheduleSave()
         return award
     }
 
@@ -513,6 +516,26 @@ class GameState: ObservableObject {
     }
 
     // MARK: - Persistence
+    /// Minimum seconds between saves triggered by high-frequency events.
+    private static let saveDebounceInterval: TimeInterval = 2.0
+    private var saveDueAt: TimeInterval?
+
+    /// Marks state dirty and writes at most once per debounce interval.
+    /// Used for events that fire many times a second (star collection).
+    func scheduleSave() {
+        if saveDueAt == nil {
+            saveDueAt = Date().timeIntervalSinceReferenceDate + Self.saveDebounceInterval
+        }
+    }
+
+    /// Called each frame; flushes a scheduled save once its interval elapses.
+    func flushScheduledSave() {
+        guard let due = saveDueAt else { return }
+        guard Date().timeIntervalSinceReferenceDate >= due else { return }
+        saveDueAt = nil
+        saveGame()
+    }
+
     func saveGame() { SaveSystem.save(gameState: self) }
 
     func loadGame() {

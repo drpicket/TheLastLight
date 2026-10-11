@@ -726,6 +726,7 @@ class GameScene: SKScene, SKPhysicsContactDelegate {
         updatePOIVisibility()
         checkLoreDiscovery()
         checkGameConditions()
+        gameState.flushScheduledSave()
     }
     
     private func updatePOIVisibility() {
