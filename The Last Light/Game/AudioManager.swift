@@ -4,8 +4,14 @@ import AVFoundation
 class AudioManager {
     static let shared = AudioManager()
     
-    private var soundPlayers: [String: AVAudioPlayer] = [:]
+    /// Pre-rendered tone data per sound name. Generating a WAV is O(samples);
+    /// at combo x5 that work was repeated several times a second.
+    private var soundData: [String: Data] = [:]
+    private var players: [String: [AVAudioPlayer]] = [:]
+    /// Each cached voice is single-use; retire finished ones before allocating more.
+    private let maxVoicesPerSound = 4
     private var ambientPlayer: AVAudioPlayer?
+    private var ambientData: Data?
     private var isSetup = false
     
     private init() {}
@@ -13,6 +19,7 @@ class AudioManager {
     func setup() {
         guard !isSetup else { return }
         isSetup = true
+        prewarmSounds()
         
         #if os(iOS) || os(tvOS)
         do {
@@ -25,82 +32,71 @@ class AudioManager {
         #endif
     }
     
+    /// Render every known effect once, off the hot path.
+    private func prewarmSounds() {
+        for name in Self.effectNames {
+            let spec = Self.spec(for: name)
+            if let data = generateToneData(frequency: spec.frequency, duration: spec.duration) {
+                soundData[name] = data
+            }
+        }
+    }
+    
+    private static let effectNames = [
+        "collect", "collectBlue", "collectGolden", "collectAncient",
+        "combo2", "combo3", "combo5", "volatile", "volatileExpire",
+        "stalker", "slingshot", "storm", "constellation", "damage",
+        "upgrade", "warp", "lore", "signal", "menu"
+    ]
+    
+    /// Duration and frequency for a named effect. Unknown names fall back to a
+    /// short neutral blip.
+    private static func spec(for name: String) -> (duration: Double, frequency: Double) {
+        switch name {
+        case "collect": return (0.3, 880)
+        case "collectBlue": return (0.4, 1100)
+        case "collectGolden": return (0.5, 1320)
+        case "collectAncient": return (0.8, 1760)
+        case "combo2": return (0.35, 990)
+        case "combo3": return (0.4, 1174)
+        case "combo5": return (0.6, 1568)
+        case "volatile": return (0.7, 1480)
+        case "volatileExpire": return (0.4, 330)
+        case "stalker": return (0.8, 165)
+        case "slingshot": return (0.5, 740)
+        case "storm": return (1.0, 520)
+        case "constellation": return (1.2, 1318)
+        case "damage": return (0.3, 220)
+        case "upgrade": return (0.5, 660)
+        case "warp": return (1.0, 440)
+        case "lore": return (0.6, 990)
+        case "signal": return (1.2, 550)
+        case "menu": return (0.2, 770)
+        default: return (0.3, 440)
+        }
+    }
+    
     func playEffect(_ name: String) {
         guard GameState.shared.soundEnabled else { return }
-        
-        let duration: Double
-        let frequency: Double
-        
-        switch name {
-        case "collect":
-            duration = 0.3
-            frequency = 880
-        case "collectBlue":
-            duration = 0.4
-            frequency = 1100
-        case "collectGolden":
-            duration = 0.5
-            frequency = 1320
-        case "collectAncient":
-            duration = 0.8
-            frequency = 1760
-        case "combo2":
-            duration = 0.35
-            frequency = 990
-        case "combo3":
-            duration = 0.4
-            frequency = 1174
-        case "combo5":
-            duration = 0.6
-            frequency = 1568
-        case "volatile":
-            duration = 0.7
-            frequency = 1480
-        case "volatileExpire":
-            duration = 0.4
-            frequency = 330
-        case "stalker":
-            duration = 0.8
-            frequency = 165
-        case "slingshot":
-            duration = 0.5
-            frequency = 740
-        case "storm":
-            duration = 1.0
-            frequency = 520
-        case "constellation":
-            duration = 1.2
-            frequency = 1318
-        case "damage":
-            duration = 0.3
-            frequency = 220
-        case "upgrade":
-            duration = 0.5
-            frequency = 660
-        case "warp":
-            duration = 1.0
-            frequency = 440
-        case "lore":
-            duration = 0.6
-            frequency = 990
-        case "signal":
-            duration = 1.2
-            frequency = 550
-        case "menu":
-            duration = 0.2
-            frequency = 770
-        default:
-            duration = 0.3
-            frequency = 440
+        if soundData[name] == nil {
+            // Unknown effect: render once, then remember it.
+            let spec = Self.spec(for: name)
+            soundData[name] = generateToneData(frequency: spec.frequency, duration: spec.duration)
         }
+        guard let data = soundData[name] else { return }
         
-        // Generate a simple tone buffer and play it
-        guard let data = generateToneData(frequency: frequency, duration: duration) else { return }
-        
+        // Reclaim finished voices so repeated plays don't grow unbounded.
+        var voices = players[name] ?? []
+        voices.removeAll { !$0.isPlaying }
+        if voices.count >= maxVoicesPerSound {
+            voices.removeFirst()
+        }
         do {
             let player = try AVAudioPlayer(data: data)
             player.prepareToPlay()
             player.play()
+            voices.append(player)
+            players[name] = voices
         } catch {
             print("Failed to play sound effect: \(error)")
         }
@@ -111,8 +107,11 @@ class AudioManager {
         
         stopAmbientMusic()
         
-        // Generate ambient drone data
-        guard let data = generateAmbientData() else { return }
+        // Rendered once and reused; the scene resumes often (pause, menus).
+        if ambientData == nil {
+            ambientData = generateAmbientData()
+        }
+        guard let data = ambientData else { return }
         
         do {
             let player = try AVAudioPlayer(data: data)
