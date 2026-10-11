@@ -39,6 +39,7 @@ class DiscoveryManager {
         guard activeDiscovery == nil, !discovery.isCompleted else { return }
         activeDiscovery = discovery
         gameState.activeDiscovery = discovery
+        NotificationCenter.default.post(name: .discoveryStarted, object: discovery)
         onDiscoveryStarted?(discovery)
     }
 

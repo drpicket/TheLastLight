@@ -103,11 +103,9 @@ class GameState: ObservableObject {
 
     private init() {
         loadGame()
-        NotificationCenter.default.addObserver(
-            forName: .discoveryStarted, object: nil, queue: .main
-        ) { [weak self] _ in
-            self?.addRisk(EnhancementConfig.riskPerDiscovery)
-        }
+        // Discovery risk is owned solely by RiskAccrualSystem, which applies the
+        // overage multiplier and decays it each frame. Observing here too would
+        // double-charge every discovery.
     }
 
     // MARK: - Game flow

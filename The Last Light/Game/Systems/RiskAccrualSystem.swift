@@ -16,14 +16,19 @@ class RiskAccrualSystem {
         min(GameState.shared.currentRisk, 1.0)
     }
 
+    /// Applies one discovery's worth of risk.
+    ///
+    /// Below the threshold risk accrues linearly. Once the threshold is crossed the
+    /// *post-increment* overage is amplified, so late discoveries bite much harder.
+    /// Measuring overage from the pre-increment value would pin risk at the threshold.
     func trackDiscovery() {
         let gs = GameState.shared
         let newRisk = gs.currentRisk + EnhancementConfig.riskPerDiscovery
         if newRisk > EnhancementConfig.riskThreshold {
-            let overage = max(0, gs.currentRisk - EnhancementConfig.riskThreshold) * EnhancementConfig.riskOverageMultiplier
+            let overage = (newRisk - EnhancementConfig.riskThreshold) * EnhancementConfig.riskOverageMultiplier
             gs.currentRisk = min(1.0, EnhancementConfig.riskThreshold + overage)
         } else {
-            gs.currentRisk += EnhancementConfig.riskPerDiscovery
+            gs.currentRisk = newRisk
         }
     }
 
